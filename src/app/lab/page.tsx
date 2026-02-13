@@ -13,6 +13,30 @@ const experiments = [
     href: "/lab/2",
     description: "List items animate in with configurable stagger and offset.",
   },
+  {
+    id: 3,
+    title: "Typography",
+    href: "/lab/typography",
+    description: "GSAP typography motion patterns: line, char, word, scramble, typewriter, emphasis.",
+  },
+  {
+    id: 4,
+    title: "Transitions",
+    href: "/lab/transitions",
+    description: "Codrops-style multi-layer page reveal: triple swoosh, simple, duo, content.",
+  },
+  {
+    id: 5,
+    title: "Rapid Layers",
+    href: "/lab/transitions/rapid-layers",
+    description: "Rapid image layers animation with opposite-direction transforms.",
+  },
+  {
+    id: 6,
+    title: "Grain",
+    href: "/lab/grain",
+    description: "Procedural animated grain overlay using Canvas 2D.",
+  },
 ] as const;
 
 export default function LabPage() {

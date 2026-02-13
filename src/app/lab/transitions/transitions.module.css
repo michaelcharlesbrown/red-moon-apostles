@@ -1,0 +1,110 @@
+.page {
+  min-height: 100vh;
+  background: #000;
+  color: #fff;
+  padding: 2rem;
+}
+
+.backLink {
+  display: inline-block;
+  margin-bottom: 2rem;
+  color: #666;
+  text-decoration: none;
+  font-size: 0.8125rem;
+  border: 1px solid #333;
+  padding: 0.5rem 1rem;
+}
+
+.backLink:hover {
+  color: #fff;
+  border-color: #555;
+}
+
+.title {
+  font-size: clamp(2.5rem, 8vw, 4rem);
+  font-weight: 700;
+  margin-bottom: 2rem;
+}
+
+.variantSelect {
+  margin-bottom: 2rem;
+}
+
+.label {
+  display: block;
+  font-size: 0.875rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+}
+
+.select {
+  font-size: 1rem;
+  padding: 0.5rem 1rem;
+  background: #111;
+  border: 1px solid #333;
+  color: #fff;
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+}
+
+.navBtn {
+  padding: 0.75rem 1.5rem;
+  background: transparent;
+  border: 1px solid;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.navBtnA {
+  border-color: #EC4899;
+  color: #EC4899;
+}
+
+.navBtnA:hover {
+  background: #EC4899;
+  color: #000;
+}
+
+.navBtnB {
+  border-color: #3B82F6;
+  color: #3B82F6;
+}
+
+.navBtnB:hover {
+  background: #3B82F6;
+  color: #fff;
+}
+
+.bigTitle {
+  font-size: clamp(8rem, 40vw, 20rem);
+  font-weight: 700;
+  line-height: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.bigTitleA {
+  color: #EC4899;
+  text-shadow: 0 0 60px rgba(236, 72, 153, 0.4);
+}
+
+.bigTitleB {
+  color: #3B82F6;
+  text-shadow: 0 0 60px rgba(59, 130, 246, 0.4);
+}
+
+/* Page tints for extra delight when layers reveal */
+.pageA {
+  background: radial-gradient(ellipse at center, #0f0510 0%, #000 70%);
+}
+
+.pageB {
+  background: radial-gradient(ellipse at center, #050510 0%, #000 70%);
+}

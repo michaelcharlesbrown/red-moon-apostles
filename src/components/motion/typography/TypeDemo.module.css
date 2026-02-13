@@ -1,0 +1,77 @@
+.section {
+  border: 1px solid #333;
+  padding: 2rem;
+}
+
+.label {
+  margin-bottom: 1.5rem;
+}
+
+.title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.description {
+  font-size: 0.8125rem;
+  color: #888;
+}
+
+.previewWrap {
+  position: relative;
+  overflow: hidden;
+  min-height: 3em;
+  margin-bottom: 1rem;
+}
+
+.preview {
+  font-size: clamp(1rem, 3vw, 1.5rem);
+  line-height: 1.6;
+  color: #e5e5e5;
+}
+
+.preview [data-word],
+.preview [data-char] {
+  display: inline-block;
+}
+
+.preview [data-word] {
+  white-space: nowrap;
+}
+
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: #fff;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: caretBlink 1s step-end infinite;
+}
+
+@keyframes caretBlink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
+}
+
+.replayBtn {
+  font-size: 0.8125rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid #555;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.replayBtn:hover {
+  border-color: #888;
+  color: #fff;
+}
