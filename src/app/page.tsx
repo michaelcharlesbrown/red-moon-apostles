@@ -79,32 +79,20 @@ const fadeUp = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] },
+    transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] as const },
   },
-};
+} as const;
 
 /* ------------------------------------------------------------------ */
 /*  Components                                                         */
 /* ------------------------------------------------------------------ */
 
-function SectionCard({
-  section,
-  animate,
-}: {
-  section: Section;
-  animate: boolean;
-}) {
+function SectionCardContent({ section }: { section: Section }) {
   const activeCount = section.links.filter((l) => l.active).length;
   const totalCount = section.links.length;
 
-  const Wrapper = animate ? motion.section : "section";
-  const wrapperProps = animate ? { variants: fadeUp } : {};
-
   return (
-    <Wrapper
-      className="group rounded-xl border border-[#1e1f23] bg-[#111214] p-6 transition-colors hover:border-[#2a2b30] sm:p-8"
-      {...wrapperProps}
-    >
+    <>
       {/* Header */}
       <div className="mb-5 flex items-baseline justify-between">
         <span
@@ -152,7 +140,7 @@ function SectionCard({
           </li>
         ))}
       </ul>
-    </Wrapper>
+    </>
   );
 }
 
@@ -191,11 +179,13 @@ export default function HomePage() {
             variants={containerVariants}
           >
             {sections.map((section) => (
-              <SectionCard
+              <motion.section
                 key={section.label}
-                section={section}
-                animate={true}
-              />
+                className="group rounded-xl border border-[#1e1f23] bg-[#111214] p-6 transition-colors hover:border-[#2a2b30] sm:p-8"
+                variants={fadeUp}
+              >
+                <SectionCardContent section={section} />
+              </motion.section>
             ))}
           </motion.div>
 
@@ -217,11 +207,12 @@ export default function HomePage() {
           {/* ---- Section cards ---- */}
           <div className="grid gap-5 md:grid-cols-3">
             {sections.map((section) => (
-              <SectionCard
+              <section
                 key={section.label}
-                section={section}
-                animate={false}
-              />
+                className="group rounded-xl border border-[#1e1f23] bg-[#111214] p-6 transition-colors hover:border-[#2a2b30] sm:p-8"
+              >
+                <SectionCardContent section={section} />
+              </section>
             ))}
           </div>
 
