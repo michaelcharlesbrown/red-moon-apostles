@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Animation reference library built with Next.js 16 (App Router), React 19, TypeScript 5, GSAP 3.14, and Tailwind CSS v4. All animation work uses GSAP — no Framer Motion.
+Animation reference library built with Next.js 16 (App Router), React 19, TypeScript 5, GSAP 3.14, Framer Motion, and Tailwind CSS v4.
 
 ## Quick Start
 
@@ -22,10 +22,18 @@ src/
 │   ├── page.tsx             # Home page (boilerplate — not customized)
 │   ├── globals.css          # Global styles + Tailwind v4
 │   └── lab/                 # All experiment pages
-│       ├── page.tsx         # Hub listing all experiments
+│       ├── page.tsx         # Hub — 3 sections: GSAP, Framer Motion, Advanced Effects
 │       ├── 1/               # PageSplit + TextReveal
 │       ├── 2/               # StaggerReveal
 │       ├── typography/      # 6 text animation modes
+│       ├── gsap/            # GSAP-focused experiments
+│       │   ├── text-animations/
+│       │   ├── scroll-effects/
+│       │   └── timeline-sequences/
+│       ├── framer-motion/   # Framer Motion experiments
+│       │   ├── ui-animations/
+│       │   ├── page-transitions/
+│       │   └── layout-animations/
 │       ├── grain/           # Grain overlays (3 approaches)
 │       │   ├── generate/    # Canvas-based procedural grain
 │       │   └── turbulence/  # SVG feTurbulence grain
@@ -42,7 +50,7 @@ src/
 
 ## Key Conventions
 
-- **Animation library:** GSAP only. All animations use `gsap.context()` for scoped cleanup.
+- **Animation libraries:** GSAP for imperative/timeline/scroll work; Framer Motion for declarative React animations. GSAP animations use `gsap.context()` for scoped cleanup.
 - **Accessibility:** Every animation component checks `prefers-reduced-motion` and gracefully degrades.
 - **Imperative control:** Components expose animation triggers via `forwardRef` + `useImperativeHandle`.
 - **Styling:** Tailwind CSS v4 + CSS Modules (`.module.css`) for scoped styles. No global Tailwind config file (v4 defaults).
@@ -85,4 +93,5 @@ Variants: `triple`, `simple`, `duo`, `content`.
 2. Build reusable animation components in `src/components/motion/` (or a sub-folder).
 3. Export from the relevant `index.ts` barrel file.
 4. Add a link to the new experiment in `src/app/lab/page.tsx`.
-5. Always use `gsap.context()` and check `prefers-reduced-motion`.
+5. For GSAP components, use `gsap.context()` for cleanup. For Framer Motion, use declarative `motion` components.
+6. Always check `prefers-reduced-motion` and gracefully degrade.
