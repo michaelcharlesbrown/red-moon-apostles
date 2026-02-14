@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
 /* ------------------------------------------------------------------ */
@@ -88,18 +89,21 @@ const fadeUp = {
 
 function SectionCard({
   section,
-  reduced,
+  animate,
 }: {
   section: Section;
-  reduced: boolean;
+  animate: boolean;
 }) {
   const activeCount = section.links.filter((l) => l.active).length;
   const totalCount = section.links.length;
 
+  const Wrapper = animate ? motion.section : "section";
+  const wrapperProps = animate ? { variants: fadeUp } : {};
+
   return (
-    <motion.section
+    <Wrapper
       className="group rounded-xl border border-[#1e1f23] bg-[#111214] p-6 transition-colors hover:border-[#2a2b30] sm:p-8"
-      variants={reduced ? {} : fadeUp}
+      {...wrapperProps}
     >
       {/* Header */}
       <div className="mb-5 flex items-baseline justify-between">
@@ -134,7 +138,7 @@ function SectionCard({
                   {link.title}
                 </span>
                 <span className="text-[#444] transition-transform group-hover/link:translate-x-0.5 group-hover/link:text-[#888]">
-                  →
+                  &rarr;
                 </span>
               </Link>
             ) : (
@@ -148,7 +152,7 @@ function SectionCard({
           </li>
         ))}
       </ul>
-    </motion.section>
+    </Wrapper>
   );
 }
 
@@ -158,87 +162,140 @@ function SectionCard({
 
 export default function HomePage() {
   const reduced = useReducedMotion() ?? false;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Only animate after hydration — SSR renders fully visible
+  const shouldAnimate = mounted && !reduced;
 
   return (
     <div className="min-h-screen bg-[#0a0a0b] text-[#e5e5e5]">
-      <motion.main
-        className="mx-auto max-w-5xl px-6 py-20 sm:py-28"
-        initial="hidden"
-        animate="visible"
-        variants={reduced ? {} : containerVariants}
-      >
-        {/* ---- Hero ---- */}
-        <motion.header className="mb-20" variants={reduced ? {} : fadeUp}>
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-[#555]">
-            Animation Reference Library
-          </p>
-          <h1 className="text-[clamp(2.5rem,8vw,4.5rem)] font-bold leading-[1.05] tracking-tight">
-            MCB Motion
-            <br />
-            <span className="text-[#555]">Lab</span>
-          </h1>
-          <p className="mt-6 max-w-lg text-base leading-relaxed text-[#777]">
-            A comprehensive collection of GSAP and Framer Motion techniques,
-            built in Next.js. Created by Michael Bailey as a reference for
-            portfolio and client projects.
-          </p>
-          <div className="mt-8 flex gap-3">
-            <Link
-              href="/lab"
-              className="rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a0a0b] transition-opacity hover:opacity-90"
-            >
-              Browse All Experiments
-            </Link>
-            <a
-              href="https://github.com/michaelcharlesbrown/mcb-motion-lab"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-[#2a2b2f] px-5 py-2.5 text-sm font-medium text-[#999] transition-colors hover:border-[#444] hover:text-white"
-            >
-              GitHub
-            </a>
+      {shouldAnimate ? (
+        <motion.main
+          className="mx-auto max-w-5xl px-6 py-20 sm:py-28"
+          initial="hidden"
+          animate="visible"
+          variants={containerVariants}
+        >
+          {/* ---- Hero ---- */}
+          <motion.header className="mb-20" variants={fadeUp}>
+            <HeroContent />
+          </motion.header>
+
+          {/* ---- Section cards ---- */}
+          <motion.div
+            className="grid gap-5 md:grid-cols-3"
+            variants={containerVariants}
+          >
+            {sections.map((section) => (
+              <SectionCard
+                key={section.label}
+                section={section}
+                animate={true}
+              />
+            ))}
+          </motion.div>
+
+          {/* ---- Stats bar ---- */}
+          <motion.div
+            className="mt-16 flex flex-wrap justify-center gap-x-10 gap-y-4 border-t border-[#1e1f23] pt-10 text-center"
+            variants={fadeUp}
+          >
+            <StatsContent />
+          </motion.div>
+        </motion.main>
+      ) : (
+        <main className="mx-auto max-w-5xl px-6 py-20 sm:py-28">
+          {/* ---- Hero ---- */}
+          <header className="mb-20">
+            <HeroContent />
+          </header>
+
+          {/* ---- Section cards ---- */}
+          <div className="grid gap-5 md:grid-cols-3">
+            {sections.map((section) => (
+              <SectionCard
+                key={section.label}
+                section={section}
+                animate={false}
+              />
+            ))}
           </div>
-        </motion.header>
 
-        {/* ---- Section cards ---- */}
-        <motion.div
-          className="grid gap-5 md:grid-cols-3"
-          variants={reduced ? {} : containerVariants}
-        >
-          {sections.map((section) => (
-            <SectionCard
-              key={section.label}
-              section={section}
-              reduced={reduced}
-            />
-          ))}
-        </motion.div>
-
-        {/* ---- Stats bar ---- */}
-        <motion.div
-          className="mt-16 flex flex-wrap justify-center gap-x-10 gap-y-4 border-t border-[#1e1f23] pt-10 text-center"
-          variants={reduced ? {} : fadeUp}
-        >
-          {[
-            { value: "24+", label: "Animation demos" },
-            { value: "2", label: "Animation libraries" },
-            { value: "12", label: "Interactive UI patterns" },
-            { value: "3", label: "Grain techniques" },
-          ].map((stat) => (
-            <div key={stat.label}>
-              <div className="text-2xl font-bold tracking-tight">
-                {stat.value}
-              </div>
-              <div className="mt-0.5 text-xs text-[#555]">{stat.label}</div>
-            </div>
-          ))}
-        </motion.div>
-      </motion.main>
+          {/* ---- Stats bar ---- */}
+          <div className="mt-16 flex flex-wrap justify-center gap-x-10 gap-y-4 border-t border-[#1e1f23] pt-10 text-center">
+            <StatsContent />
+          </div>
+        </main>
+      )}
 
       {/* ---- Footer ---- */}
       <footer className="border-t border-[#1e1f23] py-8 text-center text-xs text-[#444]">
         Built with Next.js, TypeScript, GSAP &amp; Framer Motion
       </footer>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Shared content extracted to avoid duplication                       */
+/* ------------------------------------------------------------------ */
+
+function HeroContent() {
+  return (
+    <>
+      <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-[#555]">
+        Animation Reference Library
+      </p>
+      <h1 className="text-[clamp(2.5rem,8vw,4.5rem)] font-bold leading-[1.05] tracking-tight">
+        MCB Motion
+        <br />
+        <span className="text-[#555]">Lab</span>
+      </h1>
+      <p className="mt-6 max-w-lg text-base leading-relaxed text-[#777]">
+        A comprehensive collection of GSAP and Framer Motion techniques,
+        built in Next.js. Created by Michael Bailey as a reference for
+        portfolio and client projects.
+      </p>
+      <div className="mt-8 flex gap-3">
+        <Link
+          href="/lab"
+          className="rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a0a0b] transition-opacity hover:opacity-90"
+        >
+          Browse All Experiments
+        </Link>
+        <a
+          href="https://github.com/michaelcharlesbrown/mcb-motion-lab"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-lg border border-[#2a2b2f] px-5 py-2.5 text-sm font-medium text-[#999] transition-colors hover:border-[#444] hover:text-white"
+        >
+          GitHub
+        </a>
+      </div>
+    </>
+  );
+}
+
+function StatsContent() {
+  const stats = [
+    { value: "24+", label: "Animation demos" },
+    { value: "2", label: "Animation libraries" },
+    { value: "12", label: "Interactive UI patterns" },
+    { value: "3", label: "Grain techniques" },
+  ];
+
+  return (
+    <>
+      {stats.map((stat) => (
+        <div key={stat.label}>
+          <div className="text-2xl font-bold tracking-tight">{stat.value}</div>
+          <div className="mt-0.5 text-xs text-[#555]">{stat.label}</div>
+        </div>
+      ))}
+    </>
   );
 }
