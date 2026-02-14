@@ -76,7 +76,6 @@ Variants: `triple`, `simple`, `duo`, `content`.
 
 ## Known Issues
 
-- `src/app/lab/grain/grain.module.css` is missing class definitions (`.controls`, `.controlGroup`, `.controlLabel`, `.controlInput`, `.controlSelect`, `.hero`, `.heroContent`, `.heroTitle`) used by the grain sub-pages. The controls render unstyled.
 - `FilmGrainOverlay` and `GrainTurbulenceOverlay` are not exported from `grain/index.ts`.
 - Root home page (`/`) is still the default Next.js boilerplate.
 
