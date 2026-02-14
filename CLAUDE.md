@@ -19,7 +19,7 @@ npm run lint     # ESLint
 src/
 ├── app/
 │   ├── layout.tsx           # Root layout (Geist fonts)
-│   ├── page.tsx             # Home page (boilerplate — not customized)
+│   ├── page.tsx             # Home page (animated Framer Motion landing)
 │   ├── globals.css          # Global styles + Tailwind v4
 │   └── lab/                 # All experiment pages
 │       ├── page.tsx         # Hub — 3 sections: GSAP, Framer Motion, Advanced Effects
@@ -85,7 +85,6 @@ Variants: `triple`, `simple`, `duo`, `content`.
 ## Known Issues
 
 - `FilmGrainOverlay` and `GrainTurbulenceOverlay` are not exported from `grain/index.ts`.
-- Root home page (`/`) is still the default Next.js boilerplate.
 
 ## Adding New Experiments
 

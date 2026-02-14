@@ -1,65 +1,244 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { motion, useReducedMotion } from "framer-motion";
+
+/* ------------------------------------------------------------------ */
+/*  Data                                                               */
+/* ------------------------------------------------------------------ */
+
+interface ExperimentLink {
+  title: string;
+  href: string;
+  active: boolean;
+}
+
+interface Section {
+  label: string;
+  title: string;
+  description: string;
+  links: ExperimentLink[];
+  accentColor: string;
+}
+
+const sections: Section[] = [
+  {
+    label: "01",
+    title: "GSAP Experiments",
+    description:
+      "Industry-standard animation library for complex scroll effects, timeline sequences, and cutting-edge creative work. What agencies use for hero sections and immersive experiences.",
+    accentColor: "#3b82f6",
+    links: [
+      { title: "Text Animations", href: "/lab/gsap/text-animations", active: true },
+      { title: "Scroll Effects", href: "/lab/gsap/scroll-effects", active: false },
+      { title: "Timeline Sequences", href: "/lab/gsap/timeline-sequences", active: false },
+      { title: "Typography Patterns", href: "/lab/typography", active: true },
+      { title: "Page Transitions", href: "/lab/transitions", active: true },
+    ],
+  },
+  {
+    label: "02",
+    title: "Framer Motion Experiments",
+    description:
+      "React-native animation library for UI micro-interactions, page transitions, and component animations. Perfect for polished user interfaces and interactive elements.",
+    accentColor: "#a855f7",
+    links: [
+      { title: "UI Animations", href: "/lab/framer-motion/ui-animations", active: true },
+      { title: "Page Transitions", href: "/lab/framer-motion/page-transitions", active: false },
+      { title: "Layout Animations", href: "/lab/framer-motion/layout-animations", active: false },
+    ],
+  },
+  {
+    label: "03",
+    title: "Advanced Effects",
+    description:
+      "Experimental canvas-based effects, SVG filters, and procedural generation techniques for texture, depth, and visual polish.",
+    accentColor: "#10b981",
+    links: [
+      { title: "Grain Effect Generator", href: "/lab/grain/generate", active: true },
+      { title: "Turbulence Effect", href: "/lab/grain/turbulence", active: true },
+      { title: "Film Grain Overlay", href: "/lab/grain", active: true },
+    ],
+  },
+];
+
+/* ------------------------------------------------------------------ */
+/*  Animation variants                                                 */
+/* ------------------------------------------------------------------ */
+
+const containerVariants = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.12 },
+  },
+};
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] },
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/*  Components                                                         */
+/* ------------------------------------------------------------------ */
+
+function SectionCard({
+  section,
+  reduced,
+}: {
+  section: Section;
+  reduced: boolean;
+}) {
+  const activeCount = section.links.filter((l) => l.active).length;
+  const totalCount = section.links.length;
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <motion.section
+      className="group rounded-xl border border-[#1e1f23] bg-[#111214] p-6 transition-colors hover:border-[#2a2b30] sm:p-8"
+      variants={reduced ? {} : fadeUp}
+    >
+      {/* Header */}
+      <div className="mb-5 flex items-baseline justify-between">
+        <span
+          className="text-xs font-semibold tracking-widest"
+          style={{ color: section.accentColor }}
+        >
+          {section.label}
+        </span>
+        <span className="text-xs text-[#555]">
+          {activeCount}/{totalCount} active
+        </span>
+      </div>
+
+      <h2 className="text-lg font-bold tracking-tight text-[#e5e5e5] sm:text-xl">
+        {section.title}
+      </h2>
+      <p className="mt-2 text-sm leading-relaxed text-[#777]">
+        {section.description}
+      </p>
+
+      {/* Links */}
+      <ul className="mt-6 flex flex-col gap-1">
+        {section.links.map((link) => (
+          <li key={link.href}>
+            {link.active ? (
+              <Link
+                href={link.href}
+                className="group/link flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors hover:bg-white/5"
+              >
+                <span className="text-[#ccc] transition-colors group-hover/link:text-white">
+                  {link.title}
+                </span>
+                <span className="text-[#444] transition-transform group-hover/link:translate-x-0.5 group-hover/link:text-[#888]">
+                  →
+                </span>
+              </Link>
+            ) : (
+              <span className="flex items-center justify-between rounded-md px-3 py-2 text-sm">
+                <span className="text-[#444]">{link.title}</span>
+                <span className="rounded bg-[#1a1b1f] px-1.5 py-0.5 text-[10px] text-[#555]">
+                  soon
+                </span>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </motion.section>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Page                                                               */
+/* ------------------------------------------------------------------ */
+
+export default function HomePage() {
+  const reduced = useReducedMotion() ?? false;
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0b] text-[#e5e5e5]">
+      <motion.main
+        className="mx-auto max-w-5xl px-6 py-20 sm:py-28"
+        initial="hidden"
+        animate="visible"
+        variants={reduced ? {} : containerVariants}
+      >
+        {/* ---- Hero ---- */}
+        <motion.header className="mb-20" variants={reduced ? {} : fadeUp}>
+          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.2em] text-[#555]">
+            Animation Reference Library
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+          <h1 className="text-[clamp(2.5rem,8vw,4.5rem)] font-bold leading-[1.05] tracking-tight">
+            MCB Motion
+            <br />
+            <span className="text-[#555]">Lab</span>
+          </h1>
+          <p className="mt-6 max-w-lg text-base leading-relaxed text-[#777]">
+            A comprehensive collection of GSAP and Framer Motion techniques,
+            built in Next.js. Created by Michael Bailey as a reference for
+            portfolio and client projects.
+          </p>
+          <div className="mt-8 flex gap-3">
+            <Link
+              href="/lab"
+              className="rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#0a0a0b] transition-opacity hover:opacity-90"
+            >
+              Browse All Experiments
+            </Link>
+            <a
+              href="https://github.com/michaelcharlesbrown/mcb-motion-lab"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border border-[#2a2b2f] px-5 py-2.5 text-sm font-medium text-[#999] transition-colors hover:border-[#444] hover:text-white"
+            >
+              GitHub
+            </a>
+          </div>
+        </motion.header>
+
+        {/* ---- Section cards ---- */}
+        <motion.div
+          className="grid gap-5 md:grid-cols-3"
+          variants={reduced ? {} : containerVariants}
+        >
+          {sections.map((section) => (
+            <SectionCard
+              key={section.label}
+              section={section}
+              reduced={reduced}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          ))}
+        </motion.div>
+
+        {/* ---- Stats bar ---- */}
+        <motion.div
+          className="mt-16 flex flex-wrap justify-center gap-x-10 gap-y-4 border-t border-[#1e1f23] pt-10 text-center"
+          variants={reduced ? {} : fadeUp}
+        >
+          {[
+            { value: "24+", label: "Animation demos" },
+            { value: "2", label: "Animation libraries" },
+            { value: "12", label: "Interactive UI patterns" },
+            { value: "3", label: "Grain techniques" },
+          ].map((stat) => (
+            <div key={stat.label}>
+              <div className="text-2xl font-bold tracking-tight">
+                {stat.value}
+              </div>
+              <div className="mt-0.5 text-xs text-[#555]">{stat.label}</div>
+            </div>
+          ))}
+        </motion.div>
+      </motion.main>
+
+      {/* ---- Footer ---- */}
+      <footer className="border-t border-[#1e1f23] py-8 text-center text-xs text-[#444]">
+        Built with Next.js, TypeScript, GSAP &amp; Framer Motion
+      </footer>
     </div>
   );
 }
