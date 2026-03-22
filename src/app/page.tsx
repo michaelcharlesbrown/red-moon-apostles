@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import StarField from "@/components/StarField"
-import AtmosphereLayer from "@/components/AtmosphereLayer"
-import ForegroundLayer from "@/components/ForegroundLayer"
+import SceneCanvas from "@/components/SceneCanvas"
 import AudioEngine from "@/components/AudioEngine"
 import InteractionLayer from "@/components/InteractionLayer"
 import { useSceneState } from "@/hooks/useSceneState"
@@ -20,8 +19,7 @@ export default function Home() {
   return (
     <div className="rma-root">
       <StarField bgIndex={scene.bgIndex} />
-      <AtmosphereLayer mgIndex={scene.mgIndex} cursorY={scene.cursorY} />
-      <ForegroundLayer fgIndex={scene.fgIndex} />
+      <SceneCanvas sceneIndex={scene.mgIndex} />
       <AudioEngine cursorY={scene.cursorY} />
       <InteractionLayer onScroll={scene.advance} onCursorMove={scene.setCursorY} />
       {/* LISTEN prompt */}

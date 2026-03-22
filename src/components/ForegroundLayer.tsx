@@ -18,12 +18,13 @@ const SVG_FALLBACKS = [
   `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 400"><path d="M0 400V300l100-60 80 30 120-90 100 50 60-40 140-80 100 60 80-30 60 50 120-70 80 40 100-50 60 30 100-40 100 60V400z" fill="#000"/></svg>')}`,
 ]
 
-export default function ForegroundLayer({ fgIndex }: { fgIndex: number }) {
+export default function ForegroundLayer({ fgIndex, isAdvancing }: { fgIndex: number; isAdvancing: boolean }) {
   const [activeSlot, setActiveSlot] = useState<"A" | "B">("A")
   const [srcA, setSrcA] = useState(SVG_FALLBACKS[0])
   const [srcB, setSrcB] = useState(SVG_FALLBACKS[0])
   const [opacityA, setOpacityA] = useState(1)
   const [opacityB, setOpacityB] = useState(0)
+  const [outgoingSlot, setOutgoingSlot] = useState<"A" | "B" | null>(null)
   const prevIndex = useRef(fgIndex)
   const preloaded = useRef<Record<string, boolean>>({})
 
@@ -63,11 +64,13 @@ export default function ForegroundLayer({ fgIndex }: { fgIndex: number }) {
 
     resolve(fgIndex).then((src) => {
       if (activeSlot === "A") {
+        setOutgoingSlot("A")
         setSrcB(src)
         setOpacityA(0)
         setOpacityB(1)
         setActiveSlot("B")
       } else {
+        setOutgoingSlot("B")
         setSrcA(src)
         setOpacityB(0)
         setOpacityA(1)
@@ -76,23 +79,55 @@ export default function ForegroundLayer({ fgIndex }: { fgIndex: number }) {
     })
   }, [fgIndex, activeSlot])
 
-  const baseStyle: React.CSSProperties = {
-    position: "fixed",
-    bottom: 0,
-    left: 0,
-    width: "100vw",
-    height: "100vh",
-    zIndex: 4,
-    pointerEvents: "none",
-    objectFit: "cover",
-    objectPosition: "bottom center",
-    transition: "opacity 1400ms ease-in-out",
+  const getSlotStyle = (slot: "A" | "B"): React.CSSProperties => {
+    const opacity = slot === "A" ? opacityA : opacityB
+    const isOutgoing = isAdvancing && outgoingSlot === slot
+    const isIncoming = isAdvancing && outgoingSlot !== null && outgoingSlot !== slot
+
+    const base: React.CSSProperties = {
+      position: "fixed",
+      bottom: 0,
+      left: 0,
+      width: "100vw",
+      height: "100vh",
+      zIndex: 4,
+      pointerEvents: "none",
+      objectFit: "cover",
+      objectPosition: "bottom center",
+      transformOrigin: "bottom center",
+    }
+
+    if (isOutgoing) {
+      return {
+        ...base,
+        opacity,
+        transform: "scale(3.0) translateY(80vh)",
+        transition: "opacity 1400ms cubic-bezier(0.4, 0, 1, 1), transform 1400ms cubic-bezier(0.4, 0, 1, 1)",
+      }
+    }
+
+    if (isIncoming) {
+      return {
+        ...base,
+        opacity,
+        transform: "none",
+        transition: "opacity 1000ms ease-in-out",
+      }
+    }
+
+    // Resting state — transform snaps to none (invisible slots reset cleanly)
+    return {
+      ...base,
+      opacity,
+      transform: "none",
+      transition: "opacity 1400ms ease-in-out",
+    }
   }
 
   return (
     <>
-      <img src={srcA} alt="" style={{ ...baseStyle, opacity: opacityA }} />
-      <img src={srcB} alt="" style={{ ...baseStyle, opacity: opacityB }} />
+      <img src={srcA} alt="" style={getSlotStyle("A")} />
+      <img src={srcB} alt="" style={getSlotStyle("B")} />
     </>
   )
 }
