@@ -129,7 +129,23 @@ export default function SkyCanvas({ scrollOffsetRef }: { scrollOffsetRef: Mutabl
         ctx.fill()
       }
 
-      // ── Sun corona — single soft symmetric glow ──────────────────────────
+      // ── Stars ──────────────────────────────────────────────────
+      const t = timestamp * 0.001
+      for (const star of starsRef.current) {
+        const twinkle = (Math.sin(t * star.twinkleSpeed + star.twinkleOffset) + 1) / 2 * 0.85 + 0.15
+        const alpha = star.baseOpacity * twinkle
+        ctx.beginPath()
+        ctx.arc(star.x * cssW, star.y * cssH, star.radius, 0, Math.PI * 2)
+        ctx.fillStyle = star.warm
+          ? `rgba(255,210,190,${alpha.toFixed(3)})`
+          : `rgba(255,100,80,${alpha.toFixed(3)})`
+        ctx.fill()
+      }
+
+      ctx.restore()
+
+      // ── Sun corona — drawn OUTSIDE the rotation transform so it never drifts ──
+      // The star field rotates imperceptibly; the corona must stay perfectly centered.
       const sunX = cssW * 0.5
       const sunY = cssH * 0.38
       const sunR = Math.min(cssH * 0.26, cssW * 0.32)
@@ -154,32 +170,6 @@ export default function SkyCanvas({ scrollOffsetRef }: { scrollOffsetRef: Mutabl
       ctx.beginPath()
       ctx.arc(sunX, sunY, sunR * 3.0, 0, Math.PI * 2)
       ctx.fill()
-
-      // Limb edge — 1px blurred dark red stroke at the sun boundary
-      ctx.save()
-      ctx.filter = "blur(1.5px)"
-      ctx.strokeStyle = `rgba(140,8,0,${(0.75 * pulse).toFixed(3)})`
-      ctx.lineWidth = 1.2
-      ctx.beginPath()
-      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.filter = "none"
-      ctx.restore()
-
-      // ── Stars ──────────────────────────────────────────────────
-      const t = timestamp * 0.001
-      for (const star of starsRef.current) {
-        const twinkle = (Math.sin(t * star.twinkleSpeed + star.twinkleOffset) + 1) / 2 * 0.85 + 0.15
-        const alpha = star.baseOpacity * twinkle
-        ctx.beginPath()
-        ctx.arc(star.x * cssW, star.y * cssH, star.radius, 0, Math.PI * 2)
-        ctx.fillStyle = star.warm
-          ? `rgba(255,210,190,${alpha.toFixed(3)})`
-          : `rgba(255,100,80,${alpha.toFixed(3)})`
-        ctx.fill()
-      }
-
-      ctx.restore()
 
       // Grain is now handled by GrainOverlay component
 
