@@ -56,7 +56,6 @@ export default function InteractionLayer({
     }
 
     const handleTouchMove = (e: TouchEvent) => {
-      e.preventDefault()
       const touch = e.touches[0]
       if (!touch) return
 

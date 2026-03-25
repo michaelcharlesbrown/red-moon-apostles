@@ -213,12 +213,18 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
       startedRef.current = true
 
       const ctx = new AudioContext()
-      // Do NOT await — iOS Safari requires AudioContext creation and resume to stay
-      // synchronous within the user gesture handler. Awaiting breaks the gesture
-      // context chain and iOS refuses to unlock audio.
       ctx.resume()
       ctxRef.current = ctx
       audioStartRef.current = ctx.currentTime
+
+      // iOS Safari unlock: play a silent 1-sample buffer immediately and synchronously.
+      // CustomEvents don't carry iOS's user-gesture context, so the AudioContext
+      // would otherwise stay suspended. This forces it permanently active before
+      // any async loading begins.
+      const unlock = ctx.createBufferSource()
+      unlock.buffer = ctx.createBuffer(1, 1, 22050)
+      unlock.connect(ctx.destination)
+      unlock.start(0)
 
       // — Group gain nodes (Parameter 4 — speed controls low/high mix) —
       const lowGroup  = ctx.createGain()
