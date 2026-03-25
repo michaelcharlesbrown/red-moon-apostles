@@ -31,6 +31,11 @@ export default function SunCanvas() {
       ctx.arc(cx, cy, radius, 0, Math.PI * 2)
       ctx.fillStyle = "#000000"
       ctx.fill()
+
+      // Thin soft dark red edge — drawn once alongside the disc
+      ctx.strokeStyle = "rgba(120, 6, 0, 0.6)"
+      ctx.lineWidth = 2
+      ctx.stroke()
     }
 
     draw()

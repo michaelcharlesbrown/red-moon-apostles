@@ -15,6 +15,9 @@ export function useSceneState() {
   // Canvas components read this ref directly inside their own RAF loops and
   // apply CSS transforms there, avoiding 60fps React re-renders entirely.
   const scrollOffsetRef: MutableRefObject<number> = useRef(0)
+  // cursorRef mirrors cursorX/Y as a ref so canvas components can read it
+  // inside their RAF loops without triggering re-renders on every mousemove
+  const cursorRef: MutableRefObject<{ x: number; y: number }> = useRef({ x: 0, y: 0 })
   const decayRafRef = useRef(0)
   const isTransitioning = useRef(false)
 
@@ -41,6 +44,7 @@ export function useSceneState() {
   const setCursor = useCallback((x: number, y: number) => {
     setCursorX(x)
     setCursorY(y)
+    cursorRef.current = { x, y }
   }, [])
 
   const addScrollDelta = useCallback((deltaY: number) => {
@@ -57,6 +61,7 @@ export function useSceneState() {
     cursorX,
     cursorY,
     scrollOffsetRef,
+    cursorRef,
     advance,
     setCursor,
     addScrollDelta,

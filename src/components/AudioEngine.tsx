@@ -43,47 +43,57 @@ function createSyntheticIR(ctx: AudioContext): AudioBuffer {
   return buffer
 }
 
-// Play a shuffled playlist with crossfades — runs independently per group
+// Play a shuffled playlist with crossfades — runs independently per group.
+// entryDelay: seconds before the first stem starts (staggers groups for gradual build).
+// entryFade:  seconds for the first stem to fade in on entry.
 function startGroup(
   ctx: AudioContext,
   playlist: AudioBuffer[],
   groupGain: GainNode,
-  xfadeDuration: number
+  xfadeDuration: number,
+  entryDelay: number,
+  entryFade: number
 ) {
-  let index     = 0
-  let activeSrc: AudioBufferSourceNode | null = null
-  let activeGain: GainNode | null = null
+  let index        = 0
+  let firstEntry   = true
+  let activeSrc:  AudioBufferSourceNode | null = null
+  let activeGain: GainNode              | null = null
 
   const playNext = () => {
     if (ctx.state === "closed") return
 
-    const buffer      = playlist[index % playlist.length]
+    const buffer = playlist[index % playlist.length]
     index++
-
-    // Random start offset — sounds already in progress on arrival
-    const startOffset = Math.random() * Math.max(0, buffer.duration - xfadeDuration - 2)
-    const remaining   = buffer.duration - startOffset
 
     const src  = ctx.createBufferSource()
     src.buffer = buffer
+    // Loop at buffer boundary — seamless if crossfade timing ever drifts
+    src.loop      = true
+    src.loopStart = 0
+    src.loopEnd   = buffer.duration
 
     const gain = ctx.createGain()
     gain.gain.setValueAtTime(0, ctx.currentTime)
-    gain.gain.linearRampToValueAtTime(
-      1,
-      ctx.currentTime + Math.min(xfadeDuration * 0.5, remaining * 0.25)
-    )
+
+    // First entry: slow soft fade-in so each layer grows into the world.
+    // Subsequent crossfades: normal half-xfade ramp.
+    const fadeIn = firstEntry
+      ? entryFade
+      : Math.min(xfadeDuration * 0.5, buffer.duration * 0.25)
+    firstEntry = false
+
+    gain.gain.linearRampToValueAtTime(1, ctx.currentTime + fadeIn)
 
     src.connect(gain)
     gain.connect(groupGain)
-    src.start(ctx.currentTime, startOffset)
+    src.start(ctx.currentTime, 0) // always from the top
 
-    // Fade out previous stem
+    // Fade out and clean up the outgoing stem
     if (activeGain && activeSrc) {
       const old = { src: activeSrc, gain: activeGain }
       old.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + xfadeDuration)
       setTimeout(() => {
-        try { old.src.stop()       } catch { /* already stopped */ }
+        try { old.src.stop()        } catch { /* already stopped */ }
         try { old.gain.disconnect() } catch { /* already disconnected */ }
       }, (xfadeDuration + 1) * 1000)
     }
@@ -91,12 +101,13 @@ function startGroup(
     activeSrc  = src
     activeGain = gain
 
-    // Schedule crossfade when this stem nears its end
-    const msUntilCrossfade = Math.max(500, (remaining - xfadeDuration) * 1000)
+    // Schedule next crossfade when this stem nears its loop point
+    const msUntilCrossfade = Math.max(500, (buffer.duration - xfadeDuration) * 1000)
     setTimeout(playNext, msUntilCrossfade)
   }
 
-  playNext()
+  // Stagger entry — low comes in first, then mid, then high
+  setTimeout(playNext, entryDelay * 1000)
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -120,6 +131,7 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
   const rotAccRef       = useRef(0)
   const masterVolRef    = useRef(0.85)
   const smoothSpeedRef  = useRef(0)
+  const audioStartRef   = useRef(0)   // ctx.currentTime when audio was initialised
 
   // ── Four-parameter update — runs on every cursor move ──────────────────────
   useEffect(() => {
@@ -132,32 +144,53 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
     const highGain  = highGroupRef.current
     if (!ctx || !filter || !masterGain || !wetGain || !dryGain || !lowGain || !highGain) return
 
+    // Resume if the browser suspended the context (tab switch, focus loss, etc.)
+    if (ctx.state === "suspended") ctx.resume()
+
     const sunCx = window.innerWidth  * 0.5
     const sunCy = window.innerHeight * 0.38
 
     const dx = cursorX - sunCx
     const dy = cursorY - sunCy
 
-    // — Parameter 1: Distance → Filter cutoff —
-    const maxDist = Math.hypot(window.innerWidth, window.innerHeight) * 0.5
-    const normDist = Math.min(Math.hypot(dx, dy) / maxDist, 1)
-    const targetHz = 300 + normDist * 8700
-    filter.frequency.linearRampToValueAtTime(targetHz, ctx.currentTime + 0.08)
+    // — Parameter 1: Vertical position → Filter cutoff —
+    // Full screen top-to-bottom: top = bright/open (9000 Hz), bottom = dark/closed (300 Hz).
+    // Much more gradual than center-to-edge — the whole screen is the instrument.
+    const normY    = 1 - (cursorY / window.innerHeight)   // 0 = bottom, 1 = top
+    const targetHz = 300 + normY * 8700
+
+    // On first entry the cursor snaps from wherever it is to 300–9000 Hz instantly.
+    // Use a long ramp that shortens over the first 8 seconds so the filter drifts
+    // into position instead of slamming there.
+    const timeSinceStart = ctx.currentTime - audioStartRef.current
+    const rampTime = timeSinceStart < 8
+      ? 0.25 + Math.max(0, (8 - timeSinceStart) * 0.35)   // 3.05 s → 0.25 s over 8 s
+      : 0.25
+    filter.frequency.cancelScheduledValues(0)
+    filter.frequency.linearRampToValueAtTime(targetHz, ctx.currentTime + rampTime)
 
     // — Parameter 2: Angle → Reverb wet/dry —
     const angle     = Math.atan2(dy, dx)
     const normAngle = (angle + Math.PI) / (Math.PI * 2) // 0=top-right, 0.5=bottom, 1=top-right
-    wetGain.gain.setTargetAtTime(normAngle,       ctx.currentTime, 0.05)
-    dryGain.gain.setTargetAtTime(1 - normAngle,   ctx.currentTime, 0.05)
+    const wetLevel  = normAngle * 0.55              // cap at 0.55 — reverb never fully swamps signal
+    wetGain.gain.setTargetAtTime(wetLevel,        ctx.currentTime, 0.05)
+    dryGain.gain.setTargetAtTime(1 - wetLevel,    ctx.currentTime, 0.05)
 
     // — Parameter 3: Rotation speed → Master volume —
-    const rawDelta  = angle - prevAngleRef.current
-    const normDelta = ((rawDelta + Math.PI) % (Math.PI * 2)) - Math.PI // wrap to [-PI, PI]
-    rotAccRef.current += normDelta * 0.3
-    rotAccRef.current *= 0.95
-    masterVolRef.current = Math.max(0.0, Math.min(1.0,
-      masterVolRef.current + rotAccRef.current * 0.01
-    ))
+    // Guard against stale prevAngle after cursor re-entry: large position jumps
+    // produce a huge rawDelta that would spike rotAcc and kill volume.
+    const posJump = Math.hypot(cursorX - prevXRef.current, cursorY - prevYRef.current)
+    if (posJump < 80) {
+      const rawDelta  = angle - prevAngleRef.current
+      const normDelta = ((rawDelta + Math.PI) % (Math.PI * 2)) - Math.PI
+      rotAccRef.current += normDelta * 0.3
+      rotAccRef.current *= 0.88                     // faster decay — spikes dissipate in ~8 frames
+      masterVolRef.current = Math.max(0.0, Math.min(1.0,
+        masterVolRef.current + rotAccRef.current * 0.01
+      ))
+    }
+    // Slow gravity back toward 0.85 — cursor drifting without orbiting won't kill the volume
+    masterVolRef.current = masterVolRef.current * 0.998 + 0.85 * 0.002
     masterGain.gain.linearRampToValueAtTime(masterVolRef.current, ctx.currentTime + 0.1)
     prevAngleRef.current = angle
 
@@ -182,6 +215,7 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
       const ctx = new AudioContext()
       await ctx.resume()
       ctxRef.current = ctx
+      audioStartRef.current = ctx.currentTime
 
       // — Group gain nodes (Parameter 4 — speed controls low/high mix) —
       const lowGroup  = ctx.createGain()
@@ -200,9 +234,9 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
 
       // — Filter (Parameter 1 — distance controls cutoff) —
       const filter = ctx.createBiquadFilter()
-      filter.type          = "lowpass"
-      filter.Q.value       = 0.8
-      filter.frequency.value = 9000
+      filter.type            = "lowpass"
+      filter.Q.value         = 0.8
+      filter.frequency.value = 4500   // neutral mid — cursor will drift it from here
       filterRef.current = filter
 
       // — Dry/wet split (Parameter 2 — angle controls reverb) —
@@ -229,16 +263,18 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
       convolver.connect(ctx.destination)
 
       // — Load and start all three stem groups —
+      // entryDelay staggers the layers: low enters immediately, mid at 30s, high at 60s.
+      // entryFade is how long each group fades in on first entry.
       const groups = [
-        { name: "low",  count: 12, group: lowGroup,  xfade: 25 },
-        { name: "mid",  count: 12, group: midGroup,  xfade: 30 },
-        { name: "high", count: 12, group: highGroup, xfade: 20 },
+        { name: "low",  count: 12, group: lowGroup,  xfade: 25, entryDelay:  0, entryFade: 8  },
+        { name: "mid",  count: 12, group: midGroup,  xfade: 30, entryDelay: 30, entryFade: 10 },
+        { name: "high", count: 12, group: highGroup, xfade: 20, entryDelay: 60, entryFade: 12 },
       ]
 
       // Test file fallbacks — used when production stems aren't present yet
       const TEST_FALLBACKS = ["/audio/test1.mp3", "/audio/test2.mp3", "/audio/test3.mp3"]
 
-      for (const { name, count, group, xfade } of groups) {
+      for (const { name, count, group, xfade, entryDelay, entryFade } of groups) {
         const paths = Array.from({ length: count }, (_, i) =>
           `/audio/${name}-${String(i + 1).padStart(2, "0")}.mp3`
         )
@@ -259,12 +295,23 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
 
         if (buffers.length === 0) continue
 
-        startGroup(ctx, fisherYates(buffers), group, xfade)
+        startGroup(ctx, fisherYates(buffers), group, xfade, entryDelay, entryFade)
+      }
+    }
+
+    // Resume AudioContext when the page regains visibility after a tab switch
+    const handleVisibility = () => {
+      if (!document.hidden && ctxRef.current?.state === "suspended") {
+        ctxRef.current.resume()
       }
     }
 
     window.addEventListener("rma-audio-start", handler)
-    return () => window.removeEventListener("rma-audio-start", handler)
+    document.addEventListener("visibilitychange", handleVisibility)
+    return () => {
+      window.removeEventListener("rma-audio-start", handler)
+      document.removeEventListener("visibilitychange", handleVisibility)
+    }
   }, [])
 
   return null

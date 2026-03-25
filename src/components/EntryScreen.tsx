@@ -8,8 +8,7 @@ export default function EntryScreen() {
 
   useEffect(() => {
     const handler = () => {
-      // Preloader fade takes 4s — show LISTEN after it's mostly faded
-      setTimeout(() => setShowListen(true), 3500)
+      setTimeout(() => setShowListen(true), 1500)
     }
     window.addEventListener("rma-preloader-done", handler)
     return () => window.removeEventListener("rma-preloader-done", handler)

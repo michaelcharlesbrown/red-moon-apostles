@@ -129,75 +129,42 @@ export default function SkyCanvas({ scrollOffsetRef }: { scrollOffsetRef: Mutabl
         ctx.fill()
       }
 
-      // ── Sun corona — radial glow + conic asymmetry (inspired by thykka eclipse) ──
+      // ── Sun corona — single soft symmetric glow ──────────────────────────
       const sunX = cssW * 0.5
       const sunY = cssH * 0.38
       const sunR = Math.min(cssH * 0.26, cssW * 0.32)
       const pulse = 0.75 + 0.25 * Math.sin(timestamp * 0.00007)
-      const coronaAngle = timestamp * 0.00004
 
-      // 1. Radial glow — warm center fading to deep red then transparent
-      const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.9, sunX, sunY, sunR * 2.2)
-      glow.addColorStop(0, `rgba(200,40,0,${(0.35 * pulse).toFixed(3)})`)
-      glow.addColorStop(0.3, `rgba(140,12,0,${(0.18 * pulse).toFixed(3)})`)
-      glow.addColorStop(0.6, `rgba(80,5,0,${(0.06 * pulse).toFixed(3)})`)
-      glow.addColorStop(1, "transparent")
-      ctx.fillStyle = glow
+      // Inner glow — tight bright ring just outside the sun edge
+      const inner = ctx.createRadialGradient(sunX, sunY, sunR * 0.9, sunX, sunY, sunR * 1.5)
+      inner.addColorStop(0,   `rgba(220,35,0,${(0.55 * pulse).toFixed(3)})`)
+      inner.addColorStop(0.5, `rgba(160,16,0,${(0.25 * pulse).toFixed(3)})`)
+      inner.addColorStop(1,   "transparent")
+      ctx.fillStyle = inner
       ctx.beginPath()
-      ctx.arc(sunX, sunY, sunR * 2.2, 0, Math.PI * 2)
+      ctx.arc(sunX, sunY, sunR * 1.5, 0, Math.PI * 2)
       ctx.fill()
 
-      // 2. Conic gradient — asymmetric corona, masked with radial fade
-      const conicSize = Math.ceil(sunR * 5)
-      const offscreen = document.createElement("canvas")
-      offscreen.width = conicSize
-      offscreen.height = conicSize
-      const oCtx = offscreen.getContext("2d")
-      if (oCtx) {
-        const cx = conicSize / 2
-        const cy = conicSize / 2
-
-        // Draw conic — bright spot at top (-PI/2), slowly drifting
-        const conic = oCtx.createConicGradient(-Math.PI / 2 + coronaAngle, cx, cy)
-        conic.addColorStop(0, `rgba(220,30,0,${(0.30 * pulse).toFixed(3)})`)
-        conic.addColorStop(0.12, `rgba(180,15,0,${(0.20 * pulse).toFixed(3)})`)
-        conic.addColorStop(0.35, `rgba(60,4,0,${(0.05 * pulse).toFixed(3)})`)
-        conic.addColorStop(0.6, `rgba(40,2,0,${(0.03 * pulse).toFixed(3)})`)
-        conic.addColorStop(0.8, `rgba(140,10,0,${(0.12 * pulse).toFixed(3)})`)
-        conic.addColorStop(1, `rgba(220,30,0,${(0.30 * pulse).toFixed(3)})`)
-        oCtx.fillStyle = conic
-        oCtx.beginPath()
-        oCtx.arc(cx, cy, cx, 0, Math.PI * 2)
-        oCtx.fill()
-
-        // Mask: radial fade — solid in the corona ring, transparent at center and edges
-        oCtx.globalCompositeOperation = "destination-in"
-        const mask = oCtx.createRadialGradient(cx, cy, 0, cx, cy, cx)
-        mask.addColorStop(0, "transparent")
-        mask.addColorStop(0.38, "transparent")
-        mask.addColorStop(0.44, "rgba(255,255,255,0.6)")
-        mask.addColorStop(0.55, "rgba(255,255,255,1)")
-        mask.addColorStop(0.7, "rgba(255,255,255,0.5)")
-        mask.addColorStop(0.85, "rgba(255,255,255,0.15)")
-        mask.addColorStop(1, "transparent")
-        oCtx.fillStyle = mask
-        oCtx.fillRect(0, 0, conicSize, conicSize)
-
-        // Composite onto main canvas
-        ctx.drawImage(offscreen, sunX - cx, sunY - cy)
-      }
-
-      // 3. Limb line — thin bright edge
-      const limb = ctx.createRadialGradient(sunX, sunY, sunR * 0.98, sunX, sunY, sunR * 1.04)
-      limb.addColorStop(0, "transparent")
-      limb.addColorStop(0.3, `rgba(255,40,5,${(0.15 * pulse).toFixed(3)})`)
-      limb.addColorStop(0.5, `rgba(255,25,0,${(0.4 * pulse).toFixed(3)})`)
-      limb.addColorStop(0.7, `rgba(180,10,0,${(0.15 * pulse).toFixed(3)})`)
-      limb.addColorStop(1, "transparent")
-      ctx.fillStyle = limb
+      // Outer halo — wide soft atmospheric bloom
+      const outer = ctx.createRadialGradient(sunX, sunY, sunR * 1.0, sunX, sunY, sunR * 3.0)
+      outer.addColorStop(0,   `rgba(180,20,0,${(0.18 * pulse).toFixed(3)})`)
+      outer.addColorStop(0.4, `rgba(110,8,0,${(0.08 * pulse).toFixed(3)})`)
+      outer.addColorStop(1,   "transparent")
+      ctx.fillStyle = outer
       ctx.beginPath()
-      ctx.arc(sunX, sunY, sunR * 1.04, 0, Math.PI * 2)
+      ctx.arc(sunX, sunY, sunR * 3.0, 0, Math.PI * 2)
       ctx.fill()
+
+      // Limb edge — 1px blurred dark red stroke at the sun boundary
+      ctx.save()
+      ctx.filter = "blur(1.5px)"
+      ctx.strokeStyle = `rgba(140,8,0,${(0.75 * pulse).toFixed(3)})`
+      ctx.lineWidth = 1.2
+      ctx.beginPath()
+      ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.filter = "none"
+      ctx.restore()
 
       // ── Stars ──────────────────────────────────────────────────
       const t = timestamp * 0.001

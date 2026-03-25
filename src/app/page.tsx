@@ -18,7 +18,7 @@ export default function Home() {
     <div className="rma-root">
       <Preloader />
       <SkyCanvas     scrollOffsetRef={scene.scrollOffsetRef} />
-      <CloudCanvas   scrollOffsetRef={scene.scrollOffsetRef} mgIndex={scene.mgIndex} />
+      <CloudCanvas   scrollOffsetRef={scene.scrollOffsetRef} cursorRef={scene.cursorRef} mgIndex={scene.mgIndex} />
       <TerrainCanvas scrollOffsetRef={scene.scrollOffsetRef} fgIndex={scene.fgIndex} />
       <SunCanvas />
       <AudioEngine   cursorX={scene.cursorX} cursorY={scene.cursorY} />

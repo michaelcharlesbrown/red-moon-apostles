@@ -4,29 +4,40 @@ import { useEffect, useRef, useMemo, MutableRefObject } from "react"
 
 interface CloudCanvasProps {
   scrollOffsetRef: MutableRefObject<number>
+  cursorRef:       MutableRefObject<{ x: number; y: number }>
   mgIndex: number
 }
 
-export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasProps) {
-  const cloudRef = useRef<HTMLDivElement>(null)
-  const rafRef = useRef(0)
-  const readyRef = useRef(false)
+export default function CloudCanvas({ scrollOffsetRef, cursorRef, mgIndex }: CloudCanvasProps) {
+  const cloudRef    = useRef<HTMLDivElement>(null)
+  const rafRef      = useRef(0)
+  const readyRef    = useRef(false)
+
+  const displayOp = useRef(1)   // opacity moves at constant rate — no snap, no lurch
 
   const seed = useMemo(() => mgIndex * 137 + 42, [mgIndex])
 
-  // Parallax + drift + breathing RAF loop
   useEffect(() => {
     const cloudDiv = cloudRef.current
     if (!cloudDiv) return
 
     const animate = (timestamp: number) => {
-      const driftX = Math.sin(timestamp * 0.000025) * 5 + Math.sin(timestamp * 0.000055) * 3 + Math.sin(timestamp * 0.00012) * 1.5
-      const driftY = Math.cos(timestamp * 0.000018) * 3 + Math.cos(timestamp * 0.000045) * 2
+      // ── Drift / parallax / breathe ────────────────────────────────────────
+      const driftX    = Math.sin(timestamp * 0.000025) * 5 + Math.sin(timestamp * 0.000055) * 3 + Math.sin(timestamp * 0.00012) * 1.5
+      const driftY    = Math.cos(timestamp * 0.000018) * 3 + Math.cos(timestamp * 0.000045) * 2
       const parallaxY = scrollOffsetRef.current * 0.06
-      const breathe = 1.0 + Math.sin(timestamp * Math.PI * 2 / 20000) * 0.04
-      const breathe2 = 1.0 + Math.sin(timestamp * Math.PI * 2 / 35000 + 1.5) * 0.03
-
+      const breathe   = 1.0 + Math.sin(timestamp * Math.PI * 2 / 20000) * 0.04
+      const breathe2  = 1.0 + Math.sin(timestamp * Math.PI * 2 / 35000 + 1.5) * 0.03
       cloudDiv.style.transform = `translate(${driftX}%, ${driftY}%) scale(${(breathe * breathe2).toFixed(4)}) translateY(${parallaxY}px)`
+
+      // ── Cloud opacity — cursor below sun fades clouds out ────────────────
+      // Constant-rate step so the change is always gradual, never a snap.
+      const dy     = cursorRef.current.y - window.innerHeight * 0.38
+      const normV  = Math.max(-1, Math.min(1, dy / (window.innerHeight * 0.52)))
+      const targetOp = 1.0 - Math.max(0, normV) * 0.82
+      const diff   = targetOp - displayOp.current
+      displayOp.current += Math.sign(diff) * Math.min(Math.abs(diff), 0.0025)
+      cloudDiv.style.opacity = displayOp.current.toFixed(4)
 
       if (!readyRef.current) {
         readyRef.current = true
@@ -35,36 +46,13 @@ export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasPro
 
       rafRef.current = requestAnimationFrame(animate)
     }
-    rafRef.current = requestAnimationFrame(animate)
 
+    rafRef.current = requestAnimationFrame(animate)
     return () => cancelAnimationFrame(rafRef.current)
   }, [])
 
-  // Build feColorMatrix values strings
-  const baseMatrix = [
-    "1.2  0.8  0  0 -0.5",
-    "0.08 0.05 0  0 -0.01",
-    "0    0    0  0  0",
-    "1.6  1.0  0  0 -1.1",
-  ].join(" ")
-
-  const highlightMatrix = [
-    "2.0  0  0  0 -0.7",
-    "0.18 0  0  0 -0.04",
-    "0    0  0  0  0",
-    "3.2  0  0  0 -2.2",
-  ].join(" ")
-
-  const shadowMatrix = [
-    "0.3  0.2  0  0 -0.05",
-    "0.02 0.01 0  0  0",
-    "0    0    0  0  0",
-    "2.0  1.2  0  0 -1.4",
-  ].join(" ")
-
   return (
     <>
-      {/* SVG filter defs — rendered inline so filter exists before cloud div */}
       <svg
         xmlns="http://www.w3.org/2000/svg"
         style={{ position: "absolute", width: 0, height: 0 }}
@@ -89,16 +77,12 @@ export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasPro
             <feColorMatrix
               in="noise"
               type="matrix"
-              values={baseMatrix}
+              values="1.2 0.8 0 0 -0.5  0.08 0.05 0 0 -0.01  0 0 0 0 0  1.6 1.0 0 0 -1.1"
               result="redBase"
             />
-            <feGaussianBlur
-              in="redBase"
-              stdDeviation={2}
-              result="softBase"
-            />
+            <feGaussianBlur in="redBase" stdDeviation={2} result="softBase" />
 
-            {/* Finer detail — bright highlights */}
+            {/* Finer detail — bright highlight pockets */}
             <feTurbulence
               type="fractalNoise"
               baseFrequency="0.007 0.005"
@@ -109,14 +93,10 @@ export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasPro
             <feColorMatrix
               in="noise2"
               type="matrix"
-              values={highlightMatrix}
+              values="2.0 0 0 0 -0.7  0.18 0 0 0 -0.04  0 0 0 0 0  3.2 0 0 0 -2.2"
               result="highlights"
             />
-            <feGaussianBlur
-              in="highlights"
-              stdDeviation={1}
-              result="softHighlights"
-            />
+            <feGaussianBlur in="highlights" stdDeviation={1} result="softHighlights" />
 
             {/* Deep shadow veins */}
             <feTurbulence
@@ -129,7 +109,7 @@ export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasPro
             <feColorMatrix
               in="noise3"
               type="matrix"
-              values={shadowMatrix}
+              values="0.3 0.2 0 0 -0.05  0.02 0.01 0 0 0  0 0 0 0 0  2.0 1.2 0 0 -1.4"
               result="shadows"
             />
 
@@ -143,7 +123,6 @@ export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasPro
         </defs>
       </svg>
 
-      {/* Cloud layer — oversized so drift never reveals edges */}
       <div
         ref={cloudRef}
         style={{
@@ -156,13 +135,10 @@ export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasPro
           pointerEvents: "none",
           background: "white",
           filter: "url(#rma-clouds)",
-          WebkitMaskImage:
-            "linear-gradient(to bottom, white 0%, white 45%, transparent 65%)",
-          maskImage:
-            "linear-gradient(to bottom, white 0%, white 45%, transparent 65%)",
+          WebkitMaskImage: "linear-gradient(to bottom, white 0%, white 45%, transparent 65%)",
+          maskImage:       "linear-gradient(to bottom, white 0%, white 45%, transparent 65%)",
         }}
       />
-
     </>
   )
 }
