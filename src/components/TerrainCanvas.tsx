@@ -7,71 +7,142 @@ interface TerrainCanvasProps {
   fgIndex: number
 }
 
-// Deterministic pseudo-random
 function sr(seed: number, i: number): number {
   const x = Math.sin(seed * 9301 + i * 49297 + 233) * 10000
   return x - Math.floor(x)
 }
 
-// Ridge profile — multi-frequency layers for natural silhouette
+// Smooth multi-frequency ridgeline — flowing natural silhouette
 function ridgeLine(x: number, seed: number, baseY: number, amp: number, freq: number): number {
   return baseY
-    + Math.sin(x * freq       + seed * 4.2) * amp
+    + Math.sin(x * freq + seed * 4.2) * amp
     + Math.sin(x * freq * 2.7 + seed * 7.1) * amp * 0.4
     + Math.sin(x * freq * 6.3 + seed * 2.8) * amp * 0.15
-    + Math.sin(x * freq * 13.1+ seed * 9.4) * amp * 0.07
+    + Math.sin(x * freq * 13.1 + seed * 9.4) * amp * 0.07
 }
 
-// Grain palette
-const GRAIN_PALETTE: string[] = []
-for (let i = 0; i < 20; i++) {
-  const alpha = (0.025 + (i / 19) * 0.05).toFixed(3)
-  GRAIN_PALETTE.push(`rgba(255,170,150,${alpha})`)
+interface Pt { x: number; y: number }
+
+function fillTri(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, c: Pt, color: string) {
+  ctx.beginPath()
+  ctx.moveTo(a.x, a.y)
+  ctx.lineTo(b.x, b.y)
+  ctx.lineTo(c.x, c.y)
+  ctx.closePath()
+  ctx.fillStyle = color
+  ctx.fill()
 }
 
-const SVG_NS = "http://www.w3.org/2000/svg"
+// Dark red/crimson shade with subtle per-face variation
+function shade(seed: number, idx: number, baseVal: number, range: number): string {
+  const faceRand = sr(seed, idx * 17 + 3)
+  const val = Math.max(1, Math.min(baseVal + range * 1.8, baseVal + faceRand * range))
+  // Dark crimson: red dominant, green/blue very low
+  const rv = Math.round(val)
+  const gv = Math.round(val * 0.12)
+  const bv = Math.round(val * 0.05)
+  return `rgb(${rv},${gv},${bv})`
+}
 
-function createTerrainFilter(svg: SVGSVGElement, seed: number) {
-  while (svg.firstChild) svg.removeChild(svg.firstChild)
+// Draw a blended terrain layer:
+// - Smooth ridgeline silhouette on top (sampled per-pixel)
+// - Triangulated facets filling the body below
+function drawBlendedLayer(
+  ctx: CanvasRenderingContext2D,
+  cssW: number, cssH: number,
+  seed: number, baseY: number, amp: number, freq: number,
+  segW: number, numRows: number,
+  baseVal: number, range: number,
+  glowAlpha: number,
+) {
+  // ── Step 1: Sample smooth ridge at segment intervals ──────────
+  const cols = Math.ceil(cssW / segW) + 3
+  const bottomY = cssH + 30
 
-  const defs = document.createElementNS(SVG_NS, "defs")
-  const filter = document.createElementNS(SVG_NS, "filter")
-  filter.setAttribute("id", "rma-terrain-tex")
-  filter.setAttribute("x", "-5%")
-  filter.setAttribute("y", "-5%")
-  filter.setAttribute("width", "110%")
-  filter.setAttribute("height", "110%")
-  filter.setAttribute("color-interpolation-filters", "sRGB")
+  // Ridge row: smooth per-pixel ridgeline sampled at segment points
+  const ridgeRow: Pt[] = []
+  for (let c = -1; c < cols; c++) {
+    const px = c * segW
+    ridgeRow.push({ x: px, y: ridgeLine(px, seed, baseY, amp, freq) })
+  }
 
-  // feTurbulence — fractal noise for organic edge warping
-  const turb = document.createElementNS(SVG_NS, "feTurbulence")
-  turb.setAttribute("type", "fractalNoise")
-  turb.setAttribute("baseFrequency", "0.012 0.008")
-  turb.setAttribute("numOctaves", "4")
-  turb.setAttribute("seed", String(seed))
-  turb.setAttribute("result", "tnoise")
-  filter.appendChild(turb)
+  // Interior rows with stagger + jitter
+  const rows: Pt[][] = [ridgeRow]
+  for (let r = 1; r <= numRows; r++) {
+    const t = r / numRows
+    const stagger = (r % 2 === 1) ? segW * 0.5 : 0
+    const row: Pt[] = []
+    for (let c = -1; c < cols; c++) {
+      const baseX = c * segW + stagger
+      const jx = (sr(seed, r * 311 + c * 47 + 1) - 0.5) * segW * 0.45
+      const jy = (sr(seed, r * 173 + c * 89 + 2) - 0.5) * segW * 0.3
+      const ry = ridgeLine(baseX, seed, baseY, amp, freq)
+      row.push({ x: baseX + jx, y: ry + (bottomY - ry) * t + jy })
+    }
+    rows.push(row)
+  }
 
-  // feDisplacementMap — subtle organic warping of terrain edges
-  const displace = document.createElementNS(SVG_NS, "feDisplacementMap")
-  displace.setAttribute("in", "SourceGraphic")
-  displace.setAttribute("in2", "tnoise")
-  displace.setAttribute("scale", "6")
-  displace.setAttribute("xChannelSelector", "R")
-  displace.setAttribute("yChannelSelector", "G")
-  filter.appendChild(displace)
+  // ── Step 2: Draw triangulated body ────────────────────────────
+  let idx = 0
+  for (let r = 0; r < rows.length - 1; r++) {
+    const top = rows[r]
+    const bot = rows[r + 1]
+    const maxLen = Math.min(top.length, bot.length)
+    for (let c = 0; c < maxLen - 1; c++) {
+      fillTri(ctx, top[c], top[c + 1], bot[c], shade(seed, idx++, baseVal, range))
+      fillTri(ctx, top[c + 1], bot[c + 1], bot[c], shade(seed, idx++, baseVal, range))
+    }
+  }
 
-  defs.appendChild(filter)
-  svg.appendChild(defs)
+  // ── Step 3: Redraw smooth ridge edge to clean up jagged triangle tops ─
+  // Fill a thin strip along the smooth ridge to mask triangle edges
+  ctx.save()
+  // Create clip region ABOVE the smooth ridge
+  ctx.beginPath()
+  ctx.moveTo(-segW, 0)
+  ctx.lineTo(cssW + segW, 0)
+  ctx.lineTo(cssW + segW, cssH)
+  for (let x = cssW; x >= 0; x--) {
+    ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
+  }
+  ctx.lineTo(-segW, ridgeLine(0, seed, baseY, amp, freq))
+  ctx.closePath()
+  ctx.clip()
+  // Clear everything above the smooth ridge — removes triangle overshoot
+  ctx.clearRect(0, 0, cssW, cssH)
+  ctx.restore()
+
+  // ── Step 4: Red glow along smooth ridge edge ──────────────────
+  ctx.save()
+  ctx.beginPath()
+  ctx.moveTo(0, cssH)
+  for (let x = 0; x <= cssW; x++) {
+    ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
+  }
+  ctx.lineTo(cssW, cssH)
+  ctx.closePath()
+  ctx.clip()
+
+  for (let x = 0; x < cssW; x += 4) {
+    const ry = ridgeLine(x, seed, baseY, amp, freq)
+    const glowH = cssH * 0.04
+    const g = ctx.createRadialGradient(x, ry, 0, x, ry + glowH * 0.3, glowH)
+    g.addColorStop(0, `rgba(150,20,0,${(glowAlpha).toFixed(3)})`)
+    g.addColorStop(0.3, `rgba(100,10,0,${(glowAlpha * 0.5).toFixed(3)})`)
+    g.addColorStop(0.7, `rgba(50,4,0,${(glowAlpha * 0.2).toFixed(3)})`)
+    g.addColorStop(1, "transparent")
+    ctx.fillStyle = g
+    ctx.fillRect(x, ry, 4, glowH)
+  }
+  ctx.restore()
 }
 
 export default function TerrainCanvas({ scrollOffsetRef, fgIndex }: TerrainCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const svgRef       = useRef<SVGSVGElement>(null)
   const canvasRef    = useRef<HTMLCanvasElement>(null)
   const rafRef       = useRef(0)
+  const readyRef     = useRef(false)
 
-  // Draw terrain once per seed/resize change
   const drawTerrain = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -86,154 +157,28 @@ export default function TerrainCanvas({ scrollOffsetRef, fgIndex }: TerrainCanva
     canvas.style.width  = cssW + "px"
     canvas.style.height = cssH + "px"
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-    const seed = fgIndex
-    const biome = seed % 3
-
-    // Biome controls ridge shape — terrain stays in bottom third, never near the sun (38%)
-    let baseY: number, amp: number, freq: number
-    if (biome === 0) {
-      // Rocky mountains — tallest peaks still well below sun
-      baseY = cssH * (0.78 + sr(seed, 99) * 0.03)
-      amp   = cssH * 0.08
-      freq  = 0.003
-    } else if (biome === 1) {
-      // Desert dunes — low rolling forms
-      baseY = cssH * (0.82 + sr(seed, 99) * 0.03)
-      amp   = cssH * 0.06
-      freq  = 0.0015
-    } else {
-      // Badlands — low plateau
-      baseY = cssH * (0.80 + sr(seed, 99) * 0.03)
-      amp   = cssH * 0.05
-      freq  = 0.004
-    }
-
     ctx.clearRect(0, 0, cssW, cssH)
 
-    // ── Distant background ridge (depth layer) ─────────────────────
-    const bgBaseY = baseY - cssH * 0.02
-    const bgAmp = amp * 0.5
-    const bgFreq = freq * 0.7
-    const bgSeed = seed + 7
+    const seed = fgIndex
 
-    ctx.beginPath()
-    ctx.moveTo(0, cssH)
-    for (let x = 0; x <= cssW; x++) {
-      ctx.lineTo(x, ridgeLine(x, bgSeed, bgBaseY, bgAmp, bgFreq))
-    }
-    ctx.lineTo(cssW, cssH)
-    ctx.closePath()
-    const bgGrad = ctx.createLinearGradient(0, bgBaseY - bgAmp, 0, cssH)
-    bgGrad.addColorStop(0.0, "#0c0000")
-    bgGrad.addColorStop(0.15, "#080000")
-    bgGrad.addColorStop(0.5, "#050000")
-    bgGrad.addColorStop(1.0, "#030000")
-    ctx.fillStyle = bgGrad
-    ctx.fill()
-
-    // ── Red glow on background ridge — light from above catching the edge ──
-    ctx.save()
-    ctx.beginPath()
-    ctx.moveTo(0, cssH)
-    for (let x = 0; x <= cssW; x++) {
-      ctx.lineTo(x, ridgeLine(x, bgSeed, bgBaseY, bgAmp, bgFreq))
-    }
-    ctx.lineTo(cssW, cssH)
-    ctx.closePath()
-    ctx.clip()
-    for (let x = 0; x < cssW; x += 3) {
-      const ry = ridgeLine(x, bgSeed, bgBaseY, bgAmp, bgFreq)
-      const glowH = cssH * 0.04
-      const g = ctx.createRadialGradient(x, ry, 0, x, ry + glowH * 0.3, glowH)
-      g.addColorStop(0, "rgba(180,25,0,0.045)")
-      g.addColorStop(0.3, "rgba(120,12,0,0.025)")
-      g.addColorStop(0.7, "rgba(60,5,0,0.01)")
-      g.addColorStop(1, "transparent")
-      ctx.fillStyle = g
-      ctx.fillRect(x, ry, 3, glowH)
-    }
-    ctx.restore()
-
-    // ── Horizon haze — subtle atmospheric glow above terrain ───────
+    // ── Horizon haze ─────────────────────────────────────────────
     const hazeH = cssH * 0.08
-    const hazeGrad = ctx.createLinearGradient(0, baseY - hazeH, 0, baseY + cssH * 0.02)
+    const hazeGrad = ctx.createLinearGradient(0, cssH * 0.62 - hazeH, 0, cssH * 0.64)
     hazeGrad.addColorStop(0, "transparent")
-    hazeGrad.addColorStop(0.5, "rgba(100,10,0,0.03)")
-    hazeGrad.addColorStop(0.8, "rgba(70,8,0,0.06)")
-    hazeGrad.addColorStop(1, "rgba(40,4,0,0.04)")
+    hazeGrad.addColorStop(0.5, "rgba(80,8,0,0.03)")
+    hazeGrad.addColorStop(1, "rgba(40,4,0,0.02)")
     ctx.fillStyle = hazeGrad
-    ctx.fillRect(0, baseY - hazeH, cssW, hazeH + cssH * 0.02)
+    ctx.fillRect(0, cssH * 0.62 - hazeH, cssW, hazeH + cssH * 0.02)
 
-    // ── Main foreground terrain silhouette ──────────────────────────
-    ctx.beginPath()
-    ctx.moveTo(0, cssH)
-    for (let x = 0; x <= cssW; x++) {
-      ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
-    }
-    ctx.lineTo(cssW, cssH)
-    ctx.closePath()
+    // ── Distant background ridge — smooth + subtle facets ────────
+    //                                seed       baseY        amp         freq   segW rows baseVal range glow
+    drawBlendedLayer(ctx, cssW, cssH, seed + 7,  cssH * 0.68, cssH * 0.03, 0.002, 80,  2,   8,      6,    0.035)
 
-    const fillGrad = ctx.createLinearGradient(0, baseY - amp, 0, cssH)
-    fillGrad.addColorStop(0.0, "#120100")
-    fillGrad.addColorStop(0.08, "#0c0000")
-    fillGrad.addColorStop(0.25, "#080000")
-    fillGrad.addColorStop(0.5, "#050000")
-    fillGrad.addColorStop(1.0, "#020000")
-    ctx.fillStyle = fillGrad
-    ctx.fill()
+    // ── Main foreground terrain — smooth + darker facets ─────────
+    drawBlendedLayer(ctx, cssW, cssH, seed,      cssH * 0.74, cssH * 0.05, 0.003, 55,  3,   4,      7,    0.05)
 
-    // ── Red glow on foreground ridge — light from the red sky above ──
-    ctx.save()
-    ctx.beginPath()
-    ctx.moveTo(0, cssH)
-    for (let x = 0; x <= cssW; x++) {
-      ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
-    }
-    ctx.lineTo(cssW, cssH)
-    ctx.closePath()
-    ctx.clip()
-    for (let x = 0; x < cssW; x += 3) {
-      const ry = ridgeLine(x, seed, baseY, amp, freq)
-      const glowH = cssH * 0.05
-      const g = ctx.createRadialGradient(x, ry, 0, x, ry + glowH * 0.25, glowH)
-      g.addColorStop(0, "rgba(200,30,0,0.055)")
-      g.addColorStop(0.2, "rgba(150,18,0,0.035)")
-      g.addColorStop(0.5, "rgba(80,8,0,0.015)")
-      g.addColorStop(1, "transparent")
-      ctx.fillStyle = g
-      ctx.fillRect(x, ry, 3, glowH)
-    }
-    ctx.restore()
-
-    // ── Subtle internal geological layering ─────────────────────────
-    // Horizontal bands of slightly different darkness for depth
-    for (let i = 0; i < 4; i++) {
-      const bandY = baseY + (cssH - baseY) * (0.2 + i * 0.2)
-      const bandH = (cssH - baseY) * 0.08
-      const bandGrad = ctx.createLinearGradient(0, bandY, 0, bandY + bandH)
-      const bandAlpha = 0.04 + sr(seed, 200 + i) * 0.04
-      bandGrad.addColorStop(0, "transparent")
-      bandGrad.addColorStop(0.5, `rgba(60,6,0,${bandAlpha.toFixed(3)})`)
-      bandGrad.addColorStop(1, "transparent")
-      ctx.fillStyle = bandGrad
-
-      // Only fill within the terrain shape
-      ctx.save()
-      ctx.beginPath()
-      ctx.moveTo(0, cssH)
-      for (let x = 0; x <= cssW; x++) {
-        ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
-      }
-      ctx.lineTo(cssW, cssH)
-      ctx.closePath()
-      ctx.clip()
-      ctx.fillRect(0, bandY, cssW, bandH)
-      ctx.restore()
-    }
   }, [fgIndex])
 
-  // Redraw terrain when seed or window size changes
   useEffect(() => {
     drawTerrain()
     const handleResize = () => drawTerrain()
@@ -241,7 +186,6 @@ export default function TerrainCanvas({ scrollOffsetRef, fgIndex }: TerrainCanva
     return () => window.removeEventListener("resize", handleResize)
   }, [drawTerrain])
 
-  // Parallax + breath RAF loop (grain now handled by GrainOverlay)
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
@@ -249,20 +193,18 @@ export default function TerrainCanvas({ scrollOffsetRef, fgIndex }: TerrainCanva
     const animate = (timestamp: number) => {
       container.style.opacity = String(0.975 + 0.025 * Math.sin(timestamp * Math.PI * 2 / 40000))
       container.style.transform = `translateY(${scrollOffsetRef.current * 0.18}px)`
+
+      if (!readyRef.current) {
+        readyRef.current = true
+        window.dispatchEvent(new CustomEvent("rma-layer-ready", { detail: "terrain" }))
+      }
+
       rafRef.current = requestAnimationFrame(animate)
     }
     rafRef.current = requestAnimationFrame(animate)
 
     return () => cancelAnimationFrame(rafRef.current)
   }, [])
-
-  // Build SVG filter via DOM API (correct namespace)
-  useEffect(() => {
-    const svg = svgRef.current
-    if (!svg) return
-    const terrainSeed = fgIndex * 251 + 73
-    createTerrainFilter(svg, terrainSeed)
-  }, [fgIndex])
 
   return (
     <div
@@ -274,24 +216,14 @@ export default function TerrainCanvas({ scrollOffsetRef, fgIndex }: TerrainCanva
         pointerEvents: "none",
       }}
     >
-      {/* SVG filter — populated via useEffect with correct SVG namespace */}
-      <svg
-        ref={svgRef}
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ position: "absolute", width: 0, height: 0 }}
-      />
-
-      {/* Main terrain canvas — static per seed, SVG-filtered for texture */}
       <canvas
         ref={canvasRef}
         style={{
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          filter: "url(#rma-terrain-tex)",
         }}
       />
-
     </div>
   )
 }

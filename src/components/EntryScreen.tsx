@@ -1,9 +1,19 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 export default function EntryScreen() {
   const [visible, setVisible] = useState(true)
+  const [showListen, setShowListen] = useState(false)
+
+  useEffect(() => {
+    const handler = () => {
+      // Preloader fade takes 4s — show LISTEN after it's mostly faded
+      setTimeout(() => setShowListen(true), 3500)
+    }
+    window.addEventListener("rma-preloader-done", handler)
+    return () => window.removeEventListener("rma-preloader-done", handler)
+  }, [])
 
   const handleClick = () => {
     window.dispatchEvent(new CustomEvent("rma-audio-start"))
@@ -20,9 +30,9 @@ export default function EntryScreen() {
         inset: 0,
         zIndex: 9999,
         display: "flex",
-        alignItems: "center",
         justifyContent: "center",
         cursor: "pointer",
+        paddingTop: "38vh",
       }}
     >
       <span
@@ -32,6 +42,8 @@ export default function EntryScreen() {
           fontSize: 13,
           letterSpacing: 10,
           userSelect: "none",
+          opacity: showListen ? 1 : 0,
+          transition: "opacity 2s ease-in",
         }}
       >
         LISTEN

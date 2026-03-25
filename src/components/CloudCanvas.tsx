@@ -10,6 +10,7 @@ interface CloudCanvasProps {
 export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasProps) {
   const cloudRef = useRef<HTMLDivElement>(null)
   const rafRef = useRef(0)
+  const readyRef = useRef(false)
 
   const seed = useMemo(() => mgIndex * 137 + 42, [mgIndex])
 
@@ -26,6 +27,11 @@ export default function CloudCanvas({ scrollOffsetRef, mgIndex }: CloudCanvasPro
       const breathe2 = 1.0 + Math.sin(timestamp * Math.PI * 2 / 35000 + 1.5) * 0.03
 
       cloudDiv.style.transform = `translate(${driftX}%, ${driftY}%) scale(${(breathe * breathe2).toFixed(4)}) translateY(${parallaxY}px)`
+
+      if (!readyRef.current) {
+        readyRef.current = true
+        window.dispatchEvent(new CustomEvent("rma-layer-ready", { detail: "cloud" }))
+      }
 
       rafRef.current = requestAnimationFrame(animate)
     }

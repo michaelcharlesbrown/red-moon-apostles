@@ -19,15 +19,6 @@ interface MilkyWayBlob {
   opacity: number
 }
 
-interface CoronaBlob {
-  angle: number
-  dist: number     // distance from sun center as multiplier of sunR
-  size: number     // blob radius as multiplier of sunR
-  opacity: number
-  speed: number    // slow drift speed
-  phase: number
-}
-
 // Pre-compute grain alpha palette
 const GRAIN_PALETTE: string[] = []
 for (let i = 0; i < 20; i++) {
@@ -39,10 +30,10 @@ export default function SkyCanvas({ scrollOffsetRef }: { scrollOffsetRef: Mutabl
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const starsRef = useRef<Star[]>([])
   const milkyWayRef = useRef<MilkyWayBlob[]>([])
-  const coronaBlobsRef = useRef<CoronaBlob[]>([])
   const rafRef = useRef(0)
   const rotationRef = useRef(0)
   const lastTimeRef = useRef(0)
+  const readyRef = useRef(false)
 
   // Initialise stars and Milky Way blobs once
   useEffect(() => {
@@ -73,19 +64,6 @@ export default function SkyCanvas({ scrollOffsetRef }: { scrollOffsetRef: Mutabl
     }
     milkyWayRef.current = blobs
 
-    // Corona blobs — irregular fuzzy splotches around the sun's edge
-    const cBlobs: CoronaBlob[] = []
-    for (let i = 0; i < 80; i++) {
-      cBlobs.push({
-        angle: Math.random() * Math.PI * 2,
-        dist: 0.95 + Math.random() * 0.15,
-        size: 0.04 + Math.random() * 0.08,
-        opacity: 0.08 + Math.random() * 0.18,
-        speed: 0.000005 + Math.random() * 0.000015,
-        phase: Math.random() * Math.PI * 2,
-      })
-    }
-    coronaBlobsRef.current = cBlobs
   }, [])
 
   // RAF draw loop
@@ -151,65 +129,74 @@ export default function SkyCanvas({ scrollOffsetRef }: { scrollOffsetRef: Mutabl
         ctx.fill()
       }
 
-      // ── Sun corona — rough, fuzzy, dark red, photographic ──────────
+      // ── Sun corona — radial glow + conic asymmetry (inspired by thykka eclipse) ──
       const sunX = cssW * 0.5
       const sunY = cssH * 0.38
-      const sunR = cssH * 0.26
+      const sunR = Math.min(cssH * 0.26, cssW * 0.32)
       const pulse = 0.75 + 0.25 * Math.sin(timestamp * 0.00007)
+      const coronaAngle = timestamp * 0.00004
 
-      // Subtle wide halo — very faint
-      const outerHalo = ctx.createRadialGradient(sunX, sunY, sunR * 1.2, sunX, sunY, sunR * 2.5)
-      outerHalo.addColorStop(0, `rgba(100,8,0,${(0.08 * pulse).toFixed(3)})`)
-      outerHalo.addColorStop(0.5, `rgba(60,4,0,${(0.03 * pulse).toFixed(3)})`)
-      outerHalo.addColorStop(1, "transparent")
-      ctx.fillStyle = outerHalo
+      // 1. Radial glow — warm center fading to deep red then transparent
+      const glow = ctx.createRadialGradient(sunX, sunY, sunR * 0.9, sunX, sunY, sunR * 2.2)
+      glow.addColorStop(0, `rgba(200,40,0,${(0.35 * pulse).toFixed(3)})`)
+      glow.addColorStop(0.3, `rgba(140,12,0,${(0.18 * pulse).toFixed(3)})`)
+      glow.addColorStop(0.6, `rgba(80,5,0,${(0.06 * pulse).toFixed(3)})`)
+      glow.addColorStop(1, "transparent")
+      ctx.fillStyle = glow
       ctx.beginPath()
-      ctx.arc(sunX, sunY, sunR * 2.5, 0, Math.PI * 2)
+      ctx.arc(sunX, sunY, sunR * 2.2, 0, Math.PI * 2)
       ctx.fill()
 
-      // Irregular corona — 80 fuzzy blobs scattered around the edge
-      for (const blob of coronaBlobsRef.current) {
-        const drift = Math.sin(timestamp * blob.speed + blob.phase) * 0.02
-        const bAngle = blob.angle + drift
-        const bx = sunX + Math.cos(bAngle) * sunR * blob.dist
-        const by = sunY + Math.sin(bAngle) * sunR * blob.dist
-        const bRadius = sunR * blob.size
-        const bPulse = 0.7 + 0.3 * Math.sin(timestamp * blob.speed * 3 + blob.phase)
-        const alpha = blob.opacity * pulse * bPulse
+      // 2. Conic gradient — asymmetric corona, masked with radial fade
+      const conicSize = Math.ceil(sunR * 5)
+      const offscreen = document.createElement("canvas")
+      offscreen.width = conicSize
+      offscreen.height = conicSize
+      const oCtx = offscreen.getContext("2d")
+      if (oCtx) {
+        const cx = conicSize / 2
+        const cy = conicSize / 2
 
-        const g = ctx.createRadialGradient(bx, by, 0, bx, by, bRadius)
-        g.addColorStop(0, `rgba(180,15,0,${alpha.toFixed(3)})`)
-        g.addColorStop(0.4, `rgba(130,8,0,${(alpha * 0.6).toFixed(3)})`)
-        g.addColorStop(1, "transparent")
-        ctx.fillStyle = g
-        ctx.beginPath()
-        ctx.arc(bx, by, bRadius, 0, Math.PI * 2)
-        ctx.fill()
+        // Draw conic — bright spot at top (-PI/2), slowly drifting
+        const conic = oCtx.createConicGradient(-Math.PI / 2 + coronaAngle, cx, cy)
+        conic.addColorStop(0, `rgba(220,30,0,${(0.30 * pulse).toFixed(3)})`)
+        conic.addColorStop(0.12, `rgba(180,15,0,${(0.20 * pulse).toFixed(3)})`)
+        conic.addColorStop(0.35, `rgba(60,4,0,${(0.05 * pulse).toFixed(3)})`)
+        conic.addColorStop(0.6, `rgba(40,2,0,${(0.03 * pulse).toFixed(3)})`)
+        conic.addColorStop(0.8, `rgba(140,10,0,${(0.12 * pulse).toFixed(3)})`)
+        conic.addColorStop(1, `rgba(220,30,0,${(0.30 * pulse).toFixed(3)})`)
+        oCtx.fillStyle = conic
+        oCtx.beginPath()
+        oCtx.arc(cx, cy, cx, 0, Math.PI * 2)
+        oCtx.fill()
+
+        // Mask: radial fade — solid in the corona ring, transparent at center and edges
+        oCtx.globalCompositeOperation = "destination-in"
+        const mask = oCtx.createRadialGradient(cx, cy, 0, cx, cy, cx)
+        mask.addColorStop(0, "transparent")
+        mask.addColorStop(0.38, "transparent")
+        mask.addColorStop(0.44, "rgba(255,255,255,0.6)")
+        mask.addColorStop(0.55, "rgba(255,255,255,1)")
+        mask.addColorStop(0.7, "rgba(255,255,255,0.5)")
+        mask.addColorStop(0.85, "rgba(255,255,255,0.15)")
+        mask.addColorStop(1, "transparent")
+        oCtx.fillStyle = mask
+        oCtx.fillRect(0, 0, conicSize, conicSize)
+
+        // Composite onto main canvas
+        ctx.drawImage(offscreen, sunX - cx, sunY - cy)
       }
 
-      // Soft diffuse edge — very spread, barely there, no obvious ring
-      const diffuseEdge = ctx.createRadialGradient(sunX, sunY, sunR * 0.96, sunX, sunY, sunR * 1.15)
-      diffuseEdge.addColorStop(0, "transparent")
-      diffuseEdge.addColorStop(0.3, `rgba(100,5,0,${(0.06 * pulse).toFixed(3)})`)
-      diffuseEdge.addColorStop(0.5, `rgba(80,4,0,${(0.1 * pulse).toFixed(3)})`)
-      diffuseEdge.addColorStop(0.7, `rgba(60,3,0,${(0.06 * pulse).toFixed(3)})`)
-      diffuseEdge.addColorStop(1, "transparent")
-      ctx.fillStyle = diffuseEdge
+      // 3. Limb line — thin bright edge
+      const limb = ctx.createRadialGradient(sunX, sunY, sunR * 0.98, sunX, sunY, sunR * 1.04)
+      limb.addColorStop(0, "transparent")
+      limb.addColorStop(0.3, `rgba(255,40,5,${(0.15 * pulse).toFixed(3)})`)
+      limb.addColorStop(0.5, `rgba(255,25,0,${(0.4 * pulse).toFixed(3)})`)
+      limb.addColorStop(0.7, `rgba(180,10,0,${(0.15 * pulse).toFixed(3)})`)
+      limb.addColorStop(1, "transparent")
+      ctx.fillStyle = limb
       ctx.beginPath()
-      ctx.arc(sunX, sunY, sunR * 1.15, 0, Math.PI * 2)
-      ctx.fill()
-
-      // Tiny bright red limb line — very thin, glowing
-      const limbLine = ctx.createRadialGradient(sunX, sunY, sunR * 0.997, sunX, sunY, sunR * 1.02)
-      limbLine.addColorStop(0, "transparent")
-      limbLine.addColorStop(0.25, `rgba(255,30,5,${(0.12 * pulse).toFixed(3)})`)
-      limbLine.addColorStop(0.45, `rgba(255,20,0,${(0.35 * pulse).toFixed(3)})`)
-      limbLine.addColorStop(0.6, `rgba(200,10,0,${(0.2 * pulse).toFixed(3)})`)
-      limbLine.addColorStop(0.8, `rgba(120,5,0,${(0.08 * pulse).toFixed(3)})`)
-      limbLine.addColorStop(1, "transparent")
-      ctx.fillStyle = limbLine
-      ctx.beginPath()
-      ctx.arc(sunX, sunY, sunR * 1.02, 0, Math.PI * 2)
+      ctx.arc(sunX, sunY, sunR * 1.04, 0, Math.PI * 2)
       ctx.fill()
 
       // ── Stars ──────────────────────────────────────────────────
@@ -228,6 +215,12 @@ export default function SkyCanvas({ scrollOffsetRef }: { scrollOffsetRef: Mutabl
       ctx.restore()
 
       // Grain is now handled by GrainOverlay component
+
+      // Signal first frame ready
+      if (!readyRef.current) {
+        readyRef.current = true
+        window.dispatchEvent(new CustomEvent("rma-layer-ready", { detail: "sky" }))
+      }
 
       // ── Parallax transform ──
       canvas.style.transform = `translateY(${scrollOffsetRef.current * 0.015}px)`

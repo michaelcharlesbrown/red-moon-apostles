@@ -25,7 +25,7 @@ export default function SunCanvas() {
 
       const cx = w * 0.5
       const cy = h * 0.38
-      const radius = h * 0.26
+      const radius = Math.min(h * 0.26, w * 0.32)
 
       ctx.beginPath()
       ctx.arc(cx, cy, radius, 0, Math.PI * 2)
@@ -34,6 +34,7 @@ export default function SunCanvas() {
     }
 
     draw()
+    window.dispatchEvent(new CustomEvent("rma-layer-ready", { detail: "sun" }))
     window.addEventListener("resize", draw)
     return () => window.removeEventListener("resize", draw)
   }, [])

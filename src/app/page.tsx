@@ -8,6 +8,7 @@ import AudioEngine      from "@/components/AudioEngine"
 import InteractionLayer from "@/components/InteractionLayer"
 import EntryScreen      from "@/components/EntryScreen"
 import GrainOverlay     from "@/components/GrainOverlay"
+import Preloader        from "@/components/Preloader"
 import { useSceneState } from "@/hooks/useSceneState"
 
 export default function Home() {
@@ -15,6 +16,7 @@ export default function Home() {
 
   return (
     <div className="rma-root">
+      <Preloader />
       <SkyCanvas     scrollOffsetRef={scene.scrollOffsetRef} />
       <CloudCanvas   scrollOffsetRef={scene.scrollOffsetRef} mgIndex={scene.mgIndex} />
       <TerrainCanvas scrollOffsetRef={scene.scrollOffsetRef} fgIndex={scene.fgIndex} />

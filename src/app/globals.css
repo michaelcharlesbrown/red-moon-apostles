@@ -1,3 +1,4 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #000000; }
-.rma-root { width: 100vw; height: 100vh; position: relative; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000000; overscroll-behavior: none; touch-action: none; -webkit-overflow-scrolling: auto; }
+.rma-root { width: 100vw; height: 100dvh; position: relative; }
+
