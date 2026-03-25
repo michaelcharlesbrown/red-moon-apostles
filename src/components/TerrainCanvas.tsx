@@ -1,19 +1,19 @@
 "use client"
 
-import { useEffect, useRef, MutableRefObject } from "react"
+import { useEffect, useRef, useCallback, MutableRefObject } from "react"
 
 interface TerrainCanvasProps {
   scrollOffsetRef: MutableRefObject<number>
   fgIndex: number
 }
 
-// Deterministic pseudo-random — same seed+i always returns same value
+// Deterministic pseudo-random
 function sr(seed: number, i: number): number {
   const x = Math.sin(seed * 9301 + i * 49297 + 233) * 10000
   return x - Math.floor(x)
 }
 
-// Ridge profile — four frequency layers give natural geological silhouette
+// Ridge profile — multi-frequency layers for natural silhouette
 function ridgeLine(x: number, seed: number, baseY: number, amp: number, freq: number): number {
   return baseY
     + Math.sin(x * freq       + seed * 4.2) * amp
@@ -22,258 +22,276 @@ function ridgeLine(x: number, seed: number, baseY: number, amp: number, freq: nu
     + Math.sin(x * freq * 13.1+ seed * 9.4) * amp * 0.07
 }
 
-// Surface noise — modulates terrain colour per-pixel.
-// Positive → warmer/lighter (light-facing). Negative → deeper shadow.
-function surfaceNoise(x: number, y: number, seed: number): number {
-  return Math.sin(x * 0.08 + seed * 3.1) * Math.cos(y * 0.06 + seed * 7.3) * 0.5
-       + Math.sin(x * 0.23 + seed * 5.7) * Math.cos(y * 0.19 + seed * 2.1) * 0.3
-       + Math.sin(x * 0.71 + seed * 1.9) * Math.cos(y * 0.67 + seed * 8.4) * 0.2
+// Grain palette
+const GRAIN_PALETTE: string[] = []
+for (let i = 0; i < 20; i++) {
+  const alpha = (0.025 + (i / 19) * 0.05).toFixed(3)
+  GRAIN_PALETTE.push(`rgba(255,170,150,${alpha})`)
 }
 
-function drawCactus(
-  ctx: CanvasRenderingContext2D,
-  cx: number, baseY: number,
-  seed: number, off: number
-) {
-  const trunkH = 30 + sr(seed, off)      * 50
-  const trunkW = 6  + sr(seed, off + 1)  * 6
-  const armW   = Math.max(4, trunkW * 0.75)
+const SVG_NS = "http://www.w3.org/2000/svg"
 
-  ctx.fillStyle = "#0a0000"
+function createTerrainFilter(svg: SVGSVGElement, seed: number) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild)
 
-  ctx.fillRect(cx - trunkW / 2, baseY - trunkH, trunkW, trunkH)
+  const defs = document.createElementNS(SVG_NS, "defs")
+  const filter = document.createElementNS(SVG_NS, "filter")
+  filter.setAttribute("id", "rma-terrain-tex")
+  filter.setAttribute("x", "-5%")
+  filter.setAttribute("y", "-5%")
+  filter.setAttribute("width", "110%")
+  filter.setAttribute("height", "110%")
+  filter.setAttribute("color-interpolation-filters", "sRGB")
 
-  const ljH  = trunkH * (0.4  + sr(seed, off + 2) * 0.25)
-  const laLen = trunkW * (1.5  + sr(seed, off + 3) * 2.5)
-  const lvH  = trunkH * (0.15 + sr(seed, off + 4) * 0.2)
-  ctx.fillRect(cx - trunkW / 2 - laLen, baseY - ljH - armW / 2, laLen, armW)
-  ctx.fillRect(cx - trunkW / 2 - laLen, baseY - ljH - lvH,      armW,  lvH)
+  // feTurbulence — fractal noise for organic edge warping
+  const turb = document.createElementNS(SVG_NS, "feTurbulence")
+  turb.setAttribute("type", "fractalNoise")
+  turb.setAttribute("baseFrequency", "0.012 0.008")
+  turb.setAttribute("numOctaves", "4")
+  turb.setAttribute("seed", String(seed))
+  turb.setAttribute("result", "tnoise")
+  filter.appendChild(turb)
 
-  const rjH  = trunkH * (0.4  + sr(seed, off + 5) * 0.25)
-  const raLen = trunkW * (1.5  + sr(seed, off + 6) * 2.5)
-  const rvH  = trunkH * (0.15 + sr(seed, off + 7) * 0.2)
-  ctx.fillRect(cx + trunkW / 2,              baseY - rjH - armW / 2, raLen, armW)
-  ctx.fillRect(cx + trunkW / 2 + raLen - armW, baseY - rjH - rvH,   armW,  rvH)
-}
+  // feDisplacementMap — subtle organic warping of terrain edges
+  const displace = document.createElementNS(SVG_NS, "feDisplacementMap")
+  displace.setAttribute("in", "SourceGraphic")
+  displace.setAttribute("in2", "tnoise")
+  displace.setAttribute("scale", "6")
+  displace.setAttribute("xChannelSelector", "R")
+  displace.setAttribute("yChannelSelector", "G")
+  filter.appendChild(displace)
 
-// Build a clipping path from the ridge line — per-pixel for smooth silhouette
-function buildRidgePath(
-  ctx: CanvasRenderingContext2D,
-  w: number, h: number,
-  seed: number, baseY: number, amp: number, freq: number
-) {
-  ctx.beginPath()
-  ctx.moveTo(0, h)
-  for (let x = 0; x <= w; x++) {
-    ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
-  }
-  ctx.lineTo(w, h)
-  ctx.closePath()
+  defs.appendChild(filter)
+  svg.appendChild(defs)
 }
 
 export default function TerrainCanvas({ scrollOffsetRef, fgIndex }: TerrainCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const rafRef    = useRef(0)
-  const fgRef     = useRef(fgIndex)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef       = useRef<SVGSVGElement>(null)
+  const canvasRef    = useRef<HTMLCanvasElement>(null)
+  const rafRef       = useRef(0)
 
-  useEffect(() => { fgRef.current = fgIndex }, [fgIndex])
-
-  useEffect(() => {
+  // Draw terrain once per seed/resize change
+  const drawTerrain = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const resize = () => {
-      canvas.width  = window.innerWidth
-      canvas.height = window.innerHeight
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const cssW = window.innerWidth
+    const cssH = window.innerHeight
+    canvas.width  = cssW * dpr
+    canvas.height = cssH * dpr
+    canvas.style.width  = cssW + "px"
+    canvas.style.height = cssH + "px"
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    const seed = fgIndex
+    const biome = seed % 3
+
+    // Biome controls ridge shape — terrain stays in bottom third, never near the sun (38%)
+    let baseY: number, amp: number, freq: number
+    if (biome === 0) {
+      // Rocky mountains — tallest peaks still well below sun
+      baseY = cssH * (0.78 + sr(seed, 99) * 0.03)
+      amp   = cssH * 0.08
+      freq  = 0.003
+    } else if (biome === 1) {
+      // Desert dunes — low rolling forms
+      baseY = cssH * (0.82 + sr(seed, 99) * 0.03)
+      amp   = cssH * 0.06
+      freq  = 0.0015
+    } else {
+      // Badlands — low plateau
+      baseY = cssH * (0.80 + sr(seed, 99) * 0.03)
+      amp   = cssH * 0.05
+      freq  = 0.004
     }
-    resize()
-    window.addEventListener("resize", resize)
+
+    ctx.clearRect(0, 0, cssW, cssH)
+
+    // ── Distant background ridge (depth layer) ─────────────────────
+    const bgBaseY = baseY - cssH * 0.02
+    const bgAmp = amp * 0.5
+    const bgFreq = freq * 0.7
+    const bgSeed = seed + 7
+
+    ctx.beginPath()
+    ctx.moveTo(0, cssH)
+    for (let x = 0; x <= cssW; x++) {
+      ctx.lineTo(x, ridgeLine(x, bgSeed, bgBaseY, bgAmp, bgFreq))
+    }
+    ctx.lineTo(cssW, cssH)
+    ctx.closePath()
+    const bgGrad = ctx.createLinearGradient(0, bgBaseY - bgAmp, 0, cssH)
+    bgGrad.addColorStop(0.0, "#0c0000")
+    bgGrad.addColorStop(0.15, "#080000")
+    bgGrad.addColorStop(0.5, "#050000")
+    bgGrad.addColorStop(1.0, "#030000")
+    ctx.fillStyle = bgGrad
+    ctx.fill()
+
+    // ── Red glow on background ridge — light from above catching the edge ──
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(0, cssH)
+    for (let x = 0; x <= cssW; x++) {
+      ctx.lineTo(x, ridgeLine(x, bgSeed, bgBaseY, bgAmp, bgFreq))
+    }
+    ctx.lineTo(cssW, cssH)
+    ctx.closePath()
+    ctx.clip()
+    for (let x = 0; x < cssW; x += 3) {
+      const ry = ridgeLine(x, bgSeed, bgBaseY, bgAmp, bgFreq)
+      const glowH = cssH * 0.04
+      const g = ctx.createRadialGradient(x, ry, 0, x, ry + glowH * 0.3, glowH)
+      g.addColorStop(0, "rgba(180,25,0,0.045)")
+      g.addColorStop(0.3, "rgba(120,12,0,0.025)")
+      g.addColorStop(0.7, "rgba(60,5,0,0.01)")
+      g.addColorStop(1, "transparent")
+      ctx.fillStyle = g
+      ctx.fillRect(x, ry, 3, glowH)
+    }
+    ctx.restore()
+
+    // ── Horizon haze — subtle atmospheric glow above terrain ───────
+    const hazeH = cssH * 0.08
+    const hazeGrad = ctx.createLinearGradient(0, baseY - hazeH, 0, baseY + cssH * 0.02)
+    hazeGrad.addColorStop(0, "transparent")
+    hazeGrad.addColorStop(0.5, "rgba(100,10,0,0.03)")
+    hazeGrad.addColorStop(0.8, "rgba(70,8,0,0.06)")
+    hazeGrad.addColorStop(1, "rgba(40,4,0,0.04)")
+    ctx.fillStyle = hazeGrad
+    ctx.fillRect(0, baseY - hazeH, cssW, hazeH + cssH * 0.02)
+
+    // ── Main foreground terrain silhouette ──────────────────────────
+    ctx.beginPath()
+    ctx.moveTo(0, cssH)
+    for (let x = 0; x <= cssW; x++) {
+      ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
+    }
+    ctx.lineTo(cssW, cssH)
+    ctx.closePath()
+
+    const fillGrad = ctx.createLinearGradient(0, baseY - amp, 0, cssH)
+    fillGrad.addColorStop(0.0, "#120100")
+    fillGrad.addColorStop(0.08, "#0c0000")
+    fillGrad.addColorStop(0.25, "#080000")
+    fillGrad.addColorStop(0.5, "#050000")
+    fillGrad.addColorStop(1.0, "#020000")
+    ctx.fillStyle = fillGrad
+    ctx.fill()
+
+    // ── Red glow on foreground ridge — light from the red sky above ──
+    ctx.save()
+    ctx.beginPath()
+    ctx.moveTo(0, cssH)
+    for (let x = 0; x <= cssW; x++) {
+      ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
+    }
+    ctx.lineTo(cssW, cssH)
+    ctx.closePath()
+    ctx.clip()
+    for (let x = 0; x < cssW; x += 3) {
+      const ry = ridgeLine(x, seed, baseY, amp, freq)
+      const glowH = cssH * 0.05
+      const g = ctx.createRadialGradient(x, ry, 0, x, ry + glowH * 0.25, glowH)
+      g.addColorStop(0, "rgba(200,30,0,0.055)")
+      g.addColorStop(0.2, "rgba(150,18,0,0.035)")
+      g.addColorStop(0.5, "rgba(80,8,0,0.015)")
+      g.addColorStop(1, "transparent")
+      ctx.fillStyle = g
+      ctx.fillRect(x, ry, 3, glowH)
+    }
+    ctx.restore()
+
+    // ── Subtle internal geological layering ─────────────────────────
+    // Horizontal bands of slightly different darkness for depth
+    for (let i = 0; i < 4; i++) {
+      const bandY = baseY + (cssH - baseY) * (0.2 + i * 0.2)
+      const bandH = (cssH - baseY) * 0.08
+      const bandGrad = ctx.createLinearGradient(0, bandY, 0, bandY + bandH)
+      const bandAlpha = 0.04 + sr(seed, 200 + i) * 0.04
+      bandGrad.addColorStop(0, "transparent")
+      bandGrad.addColorStop(0.5, `rgba(60,6,0,${bandAlpha.toFixed(3)})`)
+      bandGrad.addColorStop(1, "transparent")
+      ctx.fillStyle = bandGrad
+
+      // Only fill within the terrain shape
+      ctx.save()
+      ctx.beginPath()
+      ctx.moveTo(0, cssH)
+      for (let x = 0; x <= cssW; x++) {
+        ctx.lineTo(x, ridgeLine(x, seed, baseY, amp, freq))
+      }
+      ctx.lineTo(cssW, cssH)
+      ctx.closePath()
+      ctx.clip()
+      ctx.fillRect(0, bandY, cssW, bandH)
+      ctx.restore()
+    }
+  }, [fgIndex])
+
+  // Redraw terrain when seed or window size changes
+  useEffect(() => {
+    drawTerrain()
+    const handleResize = () => drawTerrain()
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [drawTerrain])
+
+  // Parallax + breath RAF loop (grain now handled by GrainOverlay)
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
 
     const animate = (timestamp: number) => {
-      const w    = canvas.width
-      const h    = canvas.height
-      const seed = fgRef.current
-      const biome = fgRef.current % 3
-
-      ctx.clearRect(0, 0, w, h)
-
-      // ── Biome parameters ─────────────────────────────────────────
-      let baseY: number, amp: number, freq: number
-
-      if (biome === 0) {
-        // Rocky Mountains — dramatic ridgeline
-        baseY = h * (0.68 + sr(seed, 99) * 0.04)
-        amp   = h * 0.12
-        freq  = 0.003
-      } else if (biome === 1) {
-        // Desert Dunes — low smooth rolling profile
-        baseY = h * (0.72 + sr(seed, 99) * 0.04)
-        amp   = h * 0.10
-        freq  = 0.0015
-      } else {
-        // Rocky Badlands — flat plateau, low amplitude
-        baseY = h * (0.74 + sr(seed, 99) * 0.04)
-        amp   = h * 0.04
-        freq  = 0.005
-      }
-
-      // ── Horizon haze ─────────────────────────────────────────────
-      const hazeH = h * 0.08
-      const hazeGrad = ctx.createLinearGradient(0, baseY - hazeH, 0, baseY)
-      hazeGrad.addColorStop(0, "transparent")
-      hazeGrad.addColorStop(1, "rgba(70,8,0,0.22)")
-      ctx.fillStyle = hazeGrad
-      ctx.fillRect(0, baseY - hazeH, w, hazeH)
-
-      // ── Terrain silhouette — smooth path filled with gradient ────
-      buildRidgePath(ctx, w, h, seed, baseY, amp, freq)
-      const fillGrad = ctx.createLinearGradient(0, baseY - amp, 0, h)
-      fillGrad.addColorStop(0.0, "#1e0000")
-      fillGrad.addColorStop(0.3, "#140000")
-      fillGrad.addColorStop(1.0, "#0d0000")
-      ctx.fillStyle = fillGrad
-      ctx.fill()
-
-      // ── Surface noise texture — clipped to terrain shape ─────────
-      ctx.save()
-      buildRidgePath(ctx, w, h, seed, baseY, amp, freq)
-      ctx.clip()
-
-      for (let x = 0; x < w; x += 4) {
-        const topY = Math.floor(ridgeLine(x, seed, baseY, amp, freq))
-        for (let y = topY; y < h; y += 4) {
-          const n = surfaceNoise(x, y, seed)
-          let r: number, g: number
-
-          if (n > 0.15) {
-            // Light-facing surface: #200400 → #3d0800
-            const t = Math.min((n - 0.15) / 0.85, 1)
-            r = Math.floor(0x20 + t * (0x3d - 0x20))
-            g = Math.floor(0x04 + t * (0x08 - 0x04))
-          } else if (n < -0.15) {
-            // Deep shadow / crevice: #0d0000 → #050000
-            const t = Math.min((-n - 0.15) / 0.85, 1)
-            r = Math.floor(0x0d - t * (0x0d - 0x05))
-            g = 0
-          } else {
-            // Base tone: #0d0000 → #1e0000
-            const t = (n + 0.15) / 0.30
-            r = Math.floor(0x0d + t * (0x1e - 0x0d))
-            g = 0
-          }
-
-          ctx.fillStyle = `rgb(${r},${g},0)`
-          ctx.fillRect(x, y, 4, 4)
-        }
-      }
-
-      ctx.restore()
-
-      // ── Atmospheric edge glow — red haze at terrain–sky boundary ─
-      for (let x = 0; x < w; x += 3) {
-        const ry = ridgeLine(x, seed, baseY, amp, freq)
-        const glowGrad = ctx.createLinearGradient(0, ry - 24, 0, ry + 4)
-        glowGrad.addColorStop(0, "transparent")
-        glowGrad.addColorStop(1, "rgba(140,30,0,0.3)")
-        ctx.fillStyle = glowGrad
-        ctx.fillRect(x, ry - 24, 3, 28)
-      }
-
-      // ── Biome-specific elements ──────────────────────────────────
-      if (biome === 0) {
-        // Rocky Mountains — 3–5 sharp spires above main ridge
-        const numSpires = 3 + Math.floor(sr(seed, 50) * 3)
-        for (let i = 0; i < numSpires; i++) {
-          const sx = w * (0.08 + sr(seed, 51 + i) * 0.84)
-          const ry = ridgeLine(sx, seed, baseY, amp, freq)
-          const sh = h * (0.05 + sr(seed, 61 + i) * 0.07)
-          const sw = 10 + sr(seed, 71 + i) * 14
-          ctx.beginPath()
-          ctx.moveTo(sx,         ry - sh)
-          ctx.lineTo(sx - sw / 2, ry + 2)
-          ctx.lineTo(sx + sw / 2, ry + 2)
-          ctx.closePath()
-          // Noise-modulated spire colour
-          const n = surfaceNoise(sx, ry - sh * 0.5, seed)
-          const r = Math.floor(0x10 + Math.max(0, n) * 0x18)
-          ctx.fillStyle = `rgb(${r},0,0)`
-          ctx.fill()
-        }
-
-      } else if (biome === 1) {
-        // Desert Dunes — 4–6 saguaro cacti
-        const numCacti = 4 + Math.floor(sr(seed, 50) * 3)
-        for (let i = 0; i < numCacti; i++) {
-          const cx = w * (0.05 + sr(seed, 51 + i * 10) * 0.90)
-          const ry = ridgeLine(cx, seed, baseY, amp, freq)
-          drawCactus(ctx, cx, ry, seed, 60 + i * 10)
-        }
-
-      } else {
-        // Rocky Badlands — mesa formations + scattered boulders
-        const numMesas = 2 + Math.floor(sr(seed, 50) * 3)
-        for (let i = 0; i < numMesas; i++) {
-          const mx  = w * (0.1  + sr(seed, 51 + i) * 0.80)
-          const mw  = w * (0.06 + sr(seed, 61 + i) * 0.10)
-          const mh  = h * (0.04 + sr(seed, 71 + i) * 0.05)
-          const ry  = ridgeLine(mx, seed, baseY, amp, freq)
-          const n   = surfaceNoise(mx, ry - mh * 0.5, seed)
-          const r   = Math.floor(0x10 + Math.max(0, n) * 0x18)
-          ctx.fillStyle = `rgb(${r},0,0)`
-          ctx.fillRect(mx - mw / 2, ry - mh, mw, mh)
-          // Mesa cap (slightly lighter edge)
-          ctx.fillStyle = `rgba(40,4,0,0.6)`
-          ctx.fillRect(mx - mw / 2, ry - mh, mw, 3)
-        }
-
-        const numBoulders = 4 + Math.floor(sr(seed, 80) * 5)
-        for (let i = 0; i < numBoulders; i++) {
-          const bx = w * (0.03 + sr(seed, 81 + i) * 0.94)
-          const ry = ridgeLine(bx, seed, baseY, amp, freq)
-          const bw = 12 + sr(seed, 91 + i) * 25
-          const bh = bw * (0.4 + sr(seed, 101 + i) * 0.35)
-          ctx.beginPath()
-          ctx.ellipse(bx, ry - bh * 0.4, bw / 2, bh / 2, 0, 0, Math.PI * 2)
-          ctx.fillStyle = "#080000"
-          ctx.fill()
-        }
-      }
-
-      // ── Terrain grain ────────────────────────────────────────────
-      for (let i = 0; i < 12000; i++) {
-        const alpha = Math.random() * 0.05 + 0.025
-        ctx.fillStyle = `rgba(255,170,150,${alpha.toFixed(3)})`
-        ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1)
-      }
-
-      // ── Breath — opacity pulses 0.95–1.0 on 40-second cycle ──────
-      canvas.style.opacity = String(0.975 + 0.025 * Math.sin(timestamp * Math.PI * 2 / 40000))
-
-      // ── Parallax transform ───────────────────────────────────────
-      canvas.style.transform = `translateY(${scrollOffsetRef.current * 0.18}px)`
-
+      container.style.opacity = String(0.975 + 0.025 * Math.sin(timestamp * Math.PI * 2 / 40000))
+      container.style.transform = `translateY(${scrollOffsetRef.current * 0.18}px)`
       rafRef.current = requestAnimationFrame(animate)
     }
-
     rafRef.current = requestAnimationFrame(animate)
 
-    return () => {
-      cancelAnimationFrame(rafRef.current)
-      window.removeEventListener("resize", resize)
-    }
+    return () => cancelAnimationFrame(rafRef.current)
   }, [])
 
+  // Build SVG filter via DOM API (correct namespace)
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const terrainSeed = fgIndex * 251 + 73
+    createTerrainFilter(svg, terrainSeed)
+  }, [fgIndex])
+
   return (
-    <canvas
-      ref={canvasRef}
+    <div
+      ref={containerRef}
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 3,
         pointerEvents: "none",
       }}
-    />
+    >
+      {/* SVG filter — populated via useEffect with correct SVG namespace */}
+      <svg
+        ref={svgRef}
+        xmlns="http://www.w3.org/2000/svg"
+        style={{ position: "absolute", width: 0, height: 0 }}
+      />
+
+      {/* Main terrain canvas — static per seed, SVG-filtered for texture */}
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          filter: "url(#rma-terrain-tex)",
+        }}
+      />
+
+    </div>
   )
 }

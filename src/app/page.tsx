@@ -7,6 +7,7 @@ import SunCanvas        from "@/components/SunCanvas"
 import AudioEngine      from "@/components/AudioEngine"
 import InteractionLayer from "@/components/InteractionLayer"
 import EntryScreen      from "@/components/EntryScreen"
+import GrainOverlay     from "@/components/GrainOverlay"
 import { useSceneState } from "@/hooks/useSceneState"
 
 export default function Home() {
@@ -25,6 +26,7 @@ export default function Home() {
         onAdvance={scene.advance}
       />
       <EntryScreen />
+      <GrainOverlay />
     </div>
   )
 }

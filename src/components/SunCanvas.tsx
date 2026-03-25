@@ -11,13 +11,21 @@ export default function SunCanvas() {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const draw = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
-      const cx = canvas.width * 0.5
-      const cy = canvas.height * 0.38
-      const radius = canvas.height * 0.26
+    const draw = () => {
+      const w = window.innerWidth
+      const h = window.innerHeight
+      canvas.width  = w * dpr
+      canvas.height = h * dpr
+      canvas.style.width  = w + "px"
+      canvas.style.height = h + "px"
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+      const cx = w * 0.5
+      const cy = h * 0.38
+      const radius = h * 0.26
 
       ctx.beginPath()
       ctx.arc(cx, cy, radius, 0, Math.PI * 2)
