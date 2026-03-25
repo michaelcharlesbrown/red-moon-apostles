@@ -24,6 +24,7 @@ export default function EntryScreen() {
   return (
     <div
       onClick={handleClick}
+      onTouchStart={handleClick}
       style={{
         position: "fixed",
         inset: 0,

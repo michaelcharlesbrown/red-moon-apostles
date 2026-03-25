@@ -213,7 +213,10 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
       startedRef.current = true
 
       const ctx = new AudioContext()
-      await ctx.resume()
+      // Do NOT await — iOS Safari requires AudioContext creation and resume to stay
+      // synchronous within the user gesture handler. Awaiting breaks the gesture
+      // context chain and iOS refuses to unlock audio.
+      ctx.resume()
       ctxRef.current = ctx
       audioStartRef.current = ctx.currentTime
 
