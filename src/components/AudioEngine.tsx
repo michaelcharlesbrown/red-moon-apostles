@@ -154,20 +154,19 @@ export default function AudioEngine({ cursorX, cursorY }: AudioEngineProps) {
     const dy = cursorY - sunCy
 
     // — Parameter 1: Vertical position → Filter cutoff —
-    // Full screen top-to-bottom: top = bright/open (9000 Hz), bottom = dark/closed (300 Hz).
-    // Much more gradual than center-to-edge — the whole screen is the instrument.
-    const normY    = 1 - (cursorY / window.innerHeight)   // 0 = bottom, 1 = top
-    const targetHz = 300 + normY * 8700
+    // Mapped to ±40% of screen height from the sun center (sunCy).
+    // Moving up from sun = brighter (9000 Hz). Moving down = darker (300 Hz).
+    // Full range within comfortable reach — no need to go to screen edge.
+    const normY    = Math.max(-1, Math.min(1, (sunCy - cursorY) / (window.innerHeight * 0.40)))
+    const targetHz = 300 + ((normY + 1) / 2) * 8700   // 300 Hz (below) → 9000 Hz (above)
 
-    // On first entry the cursor snaps from wherever it is to 300–9000 Hz instantly.
-    // Use a long ramp that shortens over the first 8 seconds so the filter drifts
-    // into position instead of slamming there.
+    // setTargetAtTime: exponential approach, no cancellation, smooth in both directions.
+    // Slow time constant for first 8 seconds so initial placement drifts in gently.
     const timeSinceStart = ctx.currentTime - audioStartRef.current
-    const rampTime = timeSinceStart < 8
-      ? 0.25 + Math.max(0, (8 - timeSinceStart) * 0.35)   // 3.05 s → 0.25 s over 8 s
+    const tc = timeSinceStart < 8
+      ? 0.25 + Math.max(0, (8 - timeSinceStart) * 0.18)   // 1.69 s → 0.25 s over 8 s
       : 0.25
-    filter.frequency.cancelScheduledValues(0)
-    filter.frequency.linearRampToValueAtTime(targetHz, ctx.currentTime + rampTime)
+    filter.frequency.setTargetAtTime(targetHz, ctx.currentTime, tc)
 
     // — Parameter 2: Angle → Reverb wet/dry —
     const angle     = Math.atan2(dy, dx)
